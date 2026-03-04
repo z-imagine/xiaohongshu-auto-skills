@@ -121,6 +121,30 @@ def click_publish_button(page: Page) -> None:
     logger.info("发布完成")
 
 
+def save_as_draft(page: Page) -> None:
+    """点击「暂存离开」按钮保存草稿。"""
+    clicked = page.evaluate(
+        """
+        (() => {
+            const buttons = document.querySelectorAll('button.custom-button');
+            for (const btn of buttons) {
+                if (btn.textContent.trim() === '暂存离开') {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
+        })()
+        """
+    )
+    if clicked:
+        time.sleep(2)
+        logger.info("已点击「暂存离开」，内容已保存到草稿箱")
+    else:
+        logger.warning("未找到「暂存离开」按钮")
+        raise PublishError("未找到「暂存离开」按钮")
+
+
 # ========== 页面导航 ==========
 
 
