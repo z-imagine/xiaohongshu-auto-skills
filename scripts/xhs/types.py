@@ -159,6 +159,9 @@ class Feed:
                 "sharedCount": self.note_card.interact_info.shared_count,
             },
         }
+        cover = self.note_card.cover
+        if cover.url or cover.url_default:
+            result["cover"] = cover.url or cover.url_default
         if self.note_card.video:
             result["video"] = {"duration": self.note_card.video.capa.duration}
         return result

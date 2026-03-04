@@ -71,7 +71,7 @@ class RunLock:
             # 检查进程是否存在
             os.kill(pid, 0)
             return False
-        except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+        except (ValueError, OSError):
             return True
 
     def _force_release(self) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from pathlib import Path
 
 from .cdp import Page
 from .errors import PublishError
@@ -217,14 +218,14 @@ def _fill_long_content(page: Page, content: str) -> None:
 def _insert_images_to_editor(page: Page, image_paths: list[str]) -> None:
     """将图片插入到编辑器中。"""
     for img_path in image_paths:
-        normalized = img_path.replace("\\", "/")
+        file_uri = Path(img_path).resolve().as_uri()
         page.evaluate(
             f"""
             (() => {{
                 const editor = document.querySelector({json.dumps(CONTENT_EDITOR)});
                 if (!editor) return false;
                 const img = document.createElement('img');
-                img.src = 'file:///' + {json.dumps(normalized)};
+                img.src = {json.dumps(file_uri)};
                 editor.appendChild(img);
                 editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 return true;
