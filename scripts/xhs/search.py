@@ -8,6 +8,7 @@ import time
 
 from .cdp import Page
 from .errors import NoFeedsError
+from .human import sleep_random
 from .selectors import FILTER_BUTTON, FILTER_PANEL
 from .types import Feed, FilterOption
 from .urls import make_search_url
@@ -139,7 +140,7 @@ def _apply_filters(page: Page, filters: list[tuple[int, int]]) -> None:
     while time.monotonic() < deadline:
         if page.has_element(FILTER_PANEL):
             break
-        time.sleep(0.3)
+        sleep_random(300, 600)
 
     # 点击各筛选项
     for filters_index, tags_index in filters:
@@ -148,7 +149,7 @@ def _apply_filters(page: Page, filters: list[tuple[int, int]]) -> None:
             f"div.tags:nth-child({tags_index})"
         )
         page.click_element(selector)
-        time.sleep(0.3)
+        sleep_random(300, 600)
 
     # 等待页面更新
     page.wait_dom_stable()
