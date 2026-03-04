@@ -287,16 +287,19 @@ class Page:
             },
         )
         time.sleep(0.1)
-        # 3. 逐字输入（随机 30-80ms 间隔）
+        # 3. 逐字输入（随机 30-80ms 间隔，换行符转为 Enter 键）
         for char in text:
-            self._send_session(
-                "Input.dispatchKeyEvent",
-                {"type": "keyDown", "text": char},
-            )
-            self._send_session(
-                "Input.dispatchKeyEvent",
-                {"type": "keyUp", "text": char},
-            )
+            if char == "\n":
+                self.press_key("Enter")
+            else:
+                self._send_session(
+                    "Input.dispatchKeyEvent",
+                    {"type": "keyDown", "text": char},
+                )
+                self._send_session(
+                    "Input.dispatchKeyEvent",
+                    {"type": "keyUp", "text": char},
+                )
             time.sleep(random.uniform(0.03, 0.08))
 
     def get_element_text(self, selector: str) -> str | None:
