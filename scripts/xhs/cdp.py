@@ -572,6 +572,16 @@ class Browser:
             },
         )
 
+        # 拒绝权限弹窗（位置、通知等）
+        import contextlib
+
+        for perm in ("geolocation", "notifications", "midi", "camera", "microphone"):
+            with contextlib.suppress(CDPError):
+                self._cdp.send(
+                    "Browser.setPermission",
+                    {"permission": {"name": perm}, "setting": "denied"},
+                )
+
         # 启用必要的 domain
         page._send_session("Page.enable")
         page._send_session("DOM.enable")

@@ -420,6 +420,19 @@ def cmd_click_publish(args: argparse.Namespace) -> None:
         browser.close()
 
 
+def cmd_save_draft(args: argparse.Namespace) -> None:
+    """保存为草稿（取消发布时调用）。"""
+    from xhs.publish import save_as_draft
+
+    browser, page = _connect_existing(args)
+    try:
+        save_as_draft(page)
+        _output({"success": True, "status": "内容已保存到草稿箱"})
+    finally:
+        browser.close_page(page)
+        browser.close()
+
+
 def cmd_long_article(args: argparse.Namespace) -> None:
     """长文模式：填写内容 + 一键排版，返回模板列表。"""
     from xhs.publish_long_article import publish_long_article
@@ -676,6 +689,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser("next-step", help="点击下一步 + 填写描述")
     sub.add_argument("--content-file", required=True, help="描述内容文件路径")
     sub.set_defaults(func=cmd_next_step)
+
+    # save-draft（保存草稿）
+    sub = subparsers.add_parser("save-draft", help="保存为草稿（取消发布时使用）")
+    sub.set_defaults(func=cmd_save_draft)
 
     return parser
 
