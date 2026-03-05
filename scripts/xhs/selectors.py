@@ -4,6 +4,16 @@
 LOGIN_STATUS = ".main-container .user .link-wrapper .channel"
 QRCODE_IMG = ".login-container .qrcode-img"
 
+# ========== 手机号登录 ==========
+LOGIN_CONTAINER = ".login-container"
+PHONE_INPUT = "label.phone input"
+GET_CODE_BUTTON = "span.code-button"
+CODE_INPUT = "label.auth-code input"
+PHONE_LOGIN_SUBMIT = ".input-container button.submit"
+AGREE_CHECKBOX = ".agree-icon .icon-wrapper"
+AGREE_CHECKBOX_CHECKED = ".agree-icon .icon-wrapper.agreed"
+LOGIN_ERR_MSG = ".err-msg"
+
 # ========== 首页 / 搜索 ==========
 FILTER_BUTTON = "div.filter"
 FILTER_PANEL = "div.filter-panel"
@@ -74,6 +84,10 @@ NEXT_STEP_BUTTON_TEXT = "下一步"
 LONG_ARTICLE_TITLE = 'textarea.d-text[placeholder="输入标题"]'
 TEMPLATE_CARD = ".template-card"
 TEMPLATE_TITLE = ".template-card .template-title"
+
+# ========== 退出登录 ==========
+LOGOUT_MORE_BUTTON = "div.information-wrapper"
+LOGOUT_MENU_ITEM = 'div.menu-item[data-name="退出登录"]'
 
 # ========== 用户主页 ==========
 SIDEBAR_PROFILE = "div.main-container li.user.side-bar-component a.link-wrapper span.channel"

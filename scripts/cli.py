@@ -97,7 +97,17 @@ def cmd_check_login(args: argparse.Namespace) -> None:
     browser, page = _connect(args)
     try:
         logged_in = check_login_status(page)
-        _output({"logged_in": logged_in}, exit_code=0 if logged_in else 1)
+        if logged_in:
+            _output({"logged_in": True}, exit_code=0)
+        else:
+            from chrome_launcher import has_display
+            method = "qrcode" if has_display() else "phone"
+            hint = (
+                "请运行 login（二维码）完成登录"
+                if method == "qrcode"
+                else "请运行 send-code --phone <手机号>（手机验证码）完成登录"
+            )
+            _output({"logged_in": False, "login_method": method, "hint": hint}, exit_code=1)
     finally:
         browser.close_page(page)
         browser.close()
@@ -134,13 +144,116 @@ def cmd_login(args: argparse.Namespace) -> None:
         browser.close()
 
 
-def cmd_delete_cookies(args: argparse.Namespace) -> None:
-    """删除 cookies。"""
-    from xhs.cookies import delete_cookies, get_cookies_file_path
+def cmd_phone_login(args: argparse.Namespace) -> None:
+    """手机号+验证码登录（适用于无界面服务器）。"""
+    from xhs.login import send_phone_code, submit_phone_code
 
+    browser, page = _connect(args)
+    try:
+        sent = send_phone_code(page, args.phone)
+        if not sent:
+            _output({"logged_in": True, "message": "已登录，无需重新登录"})
+            return
+
+        # 输出提示，等待用户在终端输入验证码
+        print(
+            json.dumps(
+                {"status": "code_sent", "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}"},
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+
+        # 从 --code 参数或交互式 stdin 读取验证码
+        if args.code:
+            code = args.code.strip()
+        else:
+            try:
+                code = input("请输入验证码: ").strip()
+            except EOFError:
+                _output({"success": False, "error": "未收到验证码输入"}, exit_code=2)
+                return
+
+        if not code:
+            _output({"success": False, "error": "验证码不能为空"}, exit_code=2)
+            return
+
+        success = submit_phone_code(page, code)
+        _output(
+            {"logged_in": success, "message": "登录成功" if success else "验证码错误或超时"},
+            exit_code=0 if success else 2,
+        )
+    finally:
+        browser.close_page(page)
+        browser.close()
+
+
+def cmd_send_code(args: argparse.Namespace) -> None:
+    """分步登录第一步：填写手机号并发送验证码，保持页面不关闭。"""
+    from chrome_launcher import restart_chrome
+    from xhs.errors import RateLimitError
+    from xhs.login import send_phone_code
+
+    for attempt in range(2):
+        browser, page = _connect(args)
+        try:
+            sent = send_phone_code(page, args.phone)
+            if not sent:
+                _output({"logged_in": True, "message": "已登录，无需重新登录"})
+                return
+
+            _output({
+                "status": "code_sent",
+                "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，请运行 verify-code --code <验证码>",
+            })
+        except RateLimitError:
+            browser.close()
+            if attempt == 0:
+                logger.info("请求频率限制，重启 Chrome 后重试...")
+                restart_chrome(port=args.port)
+                continue
+            _output({"success": False, "error": "请求太频繁，重启后仍失败，请稍后再试"}, exit_code=2)
+        else:
+            # 只断开控制连接，不关闭页面——tab 保持打开，verify-code 继续复用
+            browser.close()
+            return
+
+
+def cmd_verify_code(args: argparse.Namespace) -> None:
+    """分步登录第二步：在已有页面上填写验证码并提交。"""
+    from xhs.login import submit_phone_code
+
+    browser, page = _connect_existing(args)
+    try:
+        success = submit_phone_code(page, args.code)
+        _output(
+            {"logged_in": success, "message": "登录成功" if success else "验证码错误或超时"},
+            exit_code=0 if success else 2,
+        )
+    finally:
+        browser.close_page(page)
+        browser.close()
+
+
+def cmd_delete_cookies(args: argparse.Namespace) -> None:
+    """退出登录（页面 UI 点击退出）并删除 cookies 文件。"""
+    from xhs.cookies import delete_cookies, get_cookies_file_path
+    from xhs.login import logout
+
+    # 先通过浏览器 UI 退出登录
+    browser, page = _connect(args)
+    try:
+        logged_out = logout(page)
+    finally:
+        browser.close_page(page)
+        browser.close()
+
+    # 再删除本地 cookies 文件
     path = get_cookies_file_path(args.account)
     delete_cookies(path)
-    _output({"success": True, "message": f"已删除 cookies: {path}"})
+
+    msg = "已退出登录并删除 cookies" if logged_out else "未登录，已删除 cookies 文件"
+    _output({"success": True, "message": msg, "cookies_path": path})
 
 
 def cmd_list_feeds(args: argparse.Namespace) -> None:
@@ -559,6 +672,22 @@ def build_parser() -> argparse.ArgumentParser:
     # login
     sub = subparsers.add_parser("login", help="登录（扫码）")
     sub.set_defaults(func=cmd_login)
+
+    # phone-login（单命令交互式）
+    sub = subparsers.add_parser("phone-login", help="手机号+验证码登录（交互式，适合本地终端）")
+    sub.add_argument("--phone", required=True, help="手机号（不含国家码，如 13800138000）")
+    sub.add_argument("--code", default="", help="短信验证码（省略则交互式输入）")
+    sub.set_defaults(func=cmd_phone_login)
+
+    # send-code（分步登录第一步）
+    sub = subparsers.add_parser("send-code", help="分步登录第一步：发送手机验证码，保持页面不关闭")
+    sub.add_argument("--phone", required=True, help="手机号（不含国家码）")
+    sub.set_defaults(func=cmd_send_code)
+
+    # verify-code（分步登录第二步）
+    sub = subparsers.add_parser("verify-code", help="分步登录第二步：填写验证码并完成登录")
+    sub.add_argument("--code", required=True, help="收到的短信验证码")
+    sub.set_defaults(func=cmd_verify_code)
 
     # delete-cookies
     sub = subparsers.add_parser("delete-cookies", help="删除 cookies")

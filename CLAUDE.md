@@ -132,6 +132,7 @@ scripts/cli.py 的 19 个子命令：
 |--|--|--|
 | `check-login` | check_login_status | 认证 |
 | `login` | get_login_qrcode | 认证 |
+| `phone-login` | — | 认证（手机号+验证码，无界面服务器适用） |
 | `delete-cookies` | delete_cookies | 认证 |
 | `list-feeds` | list_feeds | 浏览 |
 | `search-feeds` | search_feeds | 浏览 |

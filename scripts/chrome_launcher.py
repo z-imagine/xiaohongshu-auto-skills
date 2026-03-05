@@ -376,3 +376,12 @@ def _mask_proxy(proxy_url: str) -> str:
     except Exception:
         pass
     return proxy_url
+
+
+def has_display() -> bool:
+    """检测当前环境是否有图形界面（用于自动选择登录方式）。"""
+    system = platform.system()
+    if system in ("Windows", "Darwin"):
+        return True  # Windows / macOS 默认有 GUI
+    # Linux: 检查 DISPLAY 或 WAYLAND_DISPLAY 环境变量
+    return bool(os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"))

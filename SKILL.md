@@ -35,8 +35,10 @@ description: |
 
 | 命令 | 功能 |
 |------|------|
-| `cli.py check-login` | 检查登录状态 |
-| `cli.py login` | 获取登录二维码，等待扫码 |
+| `cli.py check-login` | 检查登录状态，返回推荐登录方式 |
+| `cli.py login` | 二维码登录（有界面环境） |
+| `cli.py send-code --phone <号码>` | 手机登录第一步：发送验证码 |
+| `cli.py verify-code --code <验证码>` | 手机登录第二步：提交验证码 |
 | `cli.py delete-cookies` | 清除 cookies（退出/切换账号） |
 
 ### xhs-publish — 内容发布

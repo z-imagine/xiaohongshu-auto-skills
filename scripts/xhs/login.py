@@ -9,8 +9,22 @@ import tempfile
 import time
 
 from .cdp import Page
+from .errors import RateLimitError
 from .human import sleep_random
-from .selectors import LOGIN_STATUS, QRCODE_IMG
+from .selectors import (
+    AGREE_CHECKBOX,
+    AGREE_CHECKBOX_CHECKED,
+    CODE_INPUT,
+    GET_CODE_BUTTON,
+    LOGIN_CONTAINER,
+    LOGIN_ERR_MSG,
+    LOGIN_STATUS,
+    LOGOUT_MENU_ITEM,
+    LOGOUT_MORE_BUTTON,
+    PHONE_INPUT,
+    PHONE_LOGIN_SUBMIT,
+    QRCODE_IMG,
+)
 from .urls import EXPLORE_URL
 
 logger = logging.getLogger(__name__)
@@ -82,6 +96,115 @@ def save_qrcode_to_file(src: str) -> str:
 
     logger.info("二维码已保存: %s", filepath)
     return filepath
+
+
+def send_phone_code(page: Page, phone: str) -> bool:
+    """填写手机号并发送短信验证码。
+
+    适用于无界面服务器场景，全程通过 CDP 操作，无需扫码。
+
+    Args:
+        page: CDP 页面对象。
+        phone: 手机号（不含国家码，如 13800138000）。
+
+    Returns:
+        True 验证码已发送，False 已登录（无需再登录）。
+
+    Raises:
+        RuntimeError: 找不到登录表单或手机号输入框。
+    """
+    page.navigate(EXPLORE_URL)
+    page.wait_for_load()
+    sleep_random(1500, 2500)
+
+    if page.has_element(LOGIN_STATUS):
+        return False
+
+    # 等待登录弹窗出现
+    page.wait_for_element(LOGIN_CONTAINER, timeout=15.0)
+    sleep_random(500, 800)
+
+    # 点击手机号输入框并逐字输入
+    page.click_element(PHONE_INPUT)
+    sleep_random(200, 400)
+    page.type_text(phone, delay_ms=80)
+    sleep_random(500, 800)
+
+    # 先勾选用户协议，再点获取验证码
+    if not page.has_element(AGREE_CHECKBOX_CHECKED):
+        page.click_element(AGREE_CHECKBOX)
+        sleep_random(300, 600)
+
+    # 点击"获取验证码"
+    page.click_element(GET_CODE_BUTTON)
+    sleep_random(2000, 2500)
+
+    # 检测按钮是否变为倒计时（成功发送后按钮文字会包含数字秒数）
+    btn_text = page.get_element_text(GET_CODE_BUTTON) or ""
+    if not any(ch.isdigit() for ch in btn_text):
+        raise RateLimitError()
+
+    logger.info("验证码已发送至 %s", phone[:3] + "****" + phone[-4:])
+    return True
+
+
+def submit_phone_code(page: Page, code: str) -> bool:
+    """填写短信验证码并提交登录。
+
+    Args:
+        page: CDP 页面对象。
+        code: 收到的短信验证码。
+
+    Returns:
+        True 登录成功，False 失败（超时或验证码错误）。
+    """
+    # 点击验证码输入框并逐字输入
+    page.click_element(CODE_INPUT)
+    sleep_random(300, 500)
+    page.type_text(code, delay_ms=100)
+    sleep_random(500, 800)
+
+    # 点击登录按钮
+    page.click_element(PHONE_LOGIN_SUBMIT)
+    sleep_random(1000, 2000)
+
+    # 检查是否有错误提示
+    err = page.get_element_text(LOGIN_ERR_MSG)
+    if err and err.strip():
+        logger.warning("登录失败: %s", err.strip())
+        return False
+
+    return wait_for_login(page, timeout=30.0)
+
+
+def logout(page: Page) -> bool:
+    """通过页面 UI 退出登录（点击"更多"→"退出登录"）。
+
+    Args:
+        page: CDP 页面对象。
+
+    Returns:
+        True 退出成功，False 未登录或操作失败。
+    """
+    page.navigate(EXPLORE_URL)
+    page.wait_for_load()
+    sleep_random(800, 1500)
+
+    if not page.has_element(LOGIN_STATUS):
+        logger.info("当前未登录，无需退出")
+        return False
+
+    # 点击"更多"按钮展开菜单
+    page.click_element(LOGOUT_MORE_BUTTON)
+    sleep_random(500, 800)
+
+    # 等待退出菜单项出现并点击
+    page.wait_for_element(LOGOUT_MENU_ITEM, timeout=5.0)
+    page.click_element(LOGOUT_MENU_ITEM)
+    sleep_random(1000, 1500)
+
+    logger.info("已退出登录")
+    return True
 
 
 def wait_for_login(page: Page, timeout: float = 120.0) -> bool:

@@ -1,7 +1,7 @@
 ---
 name: xhs-auth
 description: |
-  小红书认证管理技能。检查登录状态、扫码登录、多账号管理。
+  小红书认证管理技能。检查登录状态、登录（二维码或手机号）、多账号管理。
   当用户要求登录小红书、检查登录状态、切换账号时触发。
 ---
 
@@ -14,92 +14,68 @@ description: |
 按优先级判断用户意图：
 
 1. 用户要求"检查登录 / 是否登录 / 登录状态"：执行登录状态检查。
-2. 用户要求"登录 / 扫码登录 / 打开登录页"：执行登录流程。
+2. 用户要求"登录 / 扫码登录 / 手机登录 / 打开登录页"：执行登录流程。
 3. 用户要求"切换账号 / 换一个账号 / 退出登录 / 清除登录"：执行 cookie 清除。
 
 ## 必做约束
 
-- 登录操作需要用户手动扫码，不可自动化完成。
 - 所有 CLI 命令位于 `scripts/cli.py`，输出 JSON。
-- 需要先有运行中的 Chrome（通过 `scripts/chrome_launcher.py` 启动）。
+- 需要先有运行中的 Chrome（`ensure_chrome` 会自动启动）。
 - 如果使用文件路径，必须使用绝对路径。
 
 ## 工作流程
 
-### 检查登录状态
+### 第一步：检查登录状态
 
 ```bash
-# 默认连接本地 Chrome
 python scripts/cli.py check-login
-
-# 指定端口
-python scripts/cli.py --port 9222 check-login
-
-# 连接远程 Chrome
-python scripts/cli.py --host 10.0.0.12 --port 9222 check-login
 ```
 
 输出解读：
-- `"logged_in": true` + exit code 0 → 已登录，可执行后续操作。
-- `"logged_in": false` + exit code 1 → 未登录，提示用户扫码。
+- `"logged_in": true` → 已登录，可执行后续操作。
+- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，使用二维码登录。
+- `"logged_in": false` + `"login_method": "phone"` → 无界面服务器，使用手机验证码登录。
 
-### 登录流程
+### 第二步：根据 login_method 选择登录方式
 
-1. 确保 Chrome 已启动（有窗口模式，便于扫码）：
-```bash
-python scripts/chrome_launcher.py
-```
+#### 方式 A：二维码登录（有界面环境）
 
-2. 获取登录二维码并等待扫码：
 ```bash
 python scripts/cli.py login
 ```
 
-3. 脚本首先输出一行 JSON，包含 `qrcode_path` 字段（二维码图片保存路径），然后阻塞等待扫码。
+1. 命令立即输出 `qrcode_path`（二维码图片路径），然后阻塞等待扫码（最多 120 秒）。
+2. 提示用户用小红书 App 或微信扫码。
+3. 扫码成功后输出 `"logged_in": true`。
 
-4. **展示二维码给用户**：从输出中提取 `qrcode_path`，用系统命令打开图片供用户扫码：
+#### 方式 B：手机验证码登录（无界面服务器，分两步）
+
+**第一步** — 询问用户手机号后发送验证码：
 ```bash
-# macOS
-open /tmp/xhs/login_qrcode.png
-
-# Linux
-xdg-open /tmp/xhs/login_qrcode.png
+python scripts/cli.py send-code --phone <手机号>
 ```
-告知用户："请用小红书 App 扫描二维码登录"。
+- 自动填写手机号、勾选用户协议、点击"获取验证码"。
+- Chrome 页面保持打开，等待下一步。
+- 输出：`{"status": "code_sent", "message": "验证码已发送至 138****0000，请运行 verify-code --code <验证码>"}`
 
-5. 用户扫码成功后，脚本自动检测并输出第二行 JSON：`"logged_in": true`。
-
-**注意**：`login` 命令会阻塞最多 120 秒等待扫码。由于命令阻塞期间无法执行其他操作，应提前在另一个终端或通过后台方式打开图片。推荐流程是先运行 `login` 命令（它会立即输出二维码路径），然后提示用户自行打开图片文件扫码。
+**第二步** — 询问用户收到的验证码后提交：
+```bash
+python scripts/cli.py verify-code --code <6位验证码>
+```
+- 自动填写验证码、点击登录。
+- 输出：`{"logged_in": true, "message": "登录成功"}`
 
 ### 清除 Cookies（切换账号/退出登录）
 
 ```bash
-# 清除当前账号 cookies
 python scripts/cli.py delete-cookies
-
-# 指定账号清除
-python scripts/cli.py --account work delete-cookies
-```
-
-### 启动 / 关闭浏览器
-
-```bash
-# 启动 Chrome（有窗口，推荐用于登录）
-python scripts/chrome_launcher.py
-
-# 无头启动
-python scripts/chrome_launcher.py --headless
-
-# 指定端口
-python scripts/chrome_launcher.py --port 9223
-
-# 关闭 Chrome
-python scripts/chrome_launcher.py --kill
+python scripts/cli.py --account work delete-cookies  # 指定账号
 ```
 
 ## 失败处理
 
-- **Chrome 未找到**：提示用户安装 Google Chrome 或设置路径。
-- **端口被占用**：提示使用 `--port` 指定其他端口，或先执行 `--kill` 关闭现有实例。
-- **扫码超时**：提示用户重新执行登录命令。
-- **远程 CDP 连接失败**：检查远程 Chrome 是否已开启调试端口。
+- **Chrome 未找到**：提示用户安装 Google Chrome 或设置 `CHROME_BIN` 环境变量。
+- **登录弹窗未出现**：等待 15 秒超时，重试 `send-code`。
+- **验证码错误**：输出包含 `"logged_in": false`，重新运行 `verify-code --code <新验证码>`。
+- **二维码超时**：重新执行 `login` 命令。
+- **远程 CDP 连接失败**：检查 Chrome 是否已开启 `--remote-debugging-port`。

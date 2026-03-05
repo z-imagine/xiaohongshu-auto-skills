@@ -60,6 +60,13 @@ class ContentTooLongError(PublishError):
         super().__init__(f"当前输入长度为{current}，最大长度为{maximum}")
 
 
+class RateLimitError(XHSError):
+    """请求频率过高，验证码获取失败。"""
+
+    def __init__(self) -> None:
+        super().__init__("请求太频繁，验证码获取失败，请重启浏览器后重试")
+
+
 class CDPError(XHSError):
     """CDP 通信异常。"""
 
