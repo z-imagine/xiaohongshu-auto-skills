@@ -1,11 +1,23 @@
 """UTF-16 标题长度计算，对应 Go pkg/xhsutil/title.go。"""
 
+from __future__ import annotations
+
+MAX_TITLE_LENGTH = 20
+
 
 def calc_title_length(s: str) -> int:
     """计算小红书标题长度。
 
-    规则：非 ASCII 字符（中文、全角符号等）算 2 字节，
-    ASCII 字符算 1 字节，最终结果向上取整除以 2。
+    规则（同 Go CalcTitleLength）：
+    - 非 ASCII 字符（中文、全角符号、emoji 代码单元等）算 2
+    - ASCII 字符算 1
+    - 最终结果向上取整除以 2，上限 MAX_TITLE_LENGTH = 20
+
+    Emoji 按 UTF-16 码元计数：
+    - 基础 emoji（如 ✨ U+2728, BMP）= 1 码元 → 权重 2 → 贡献 1
+    - SMP emoji（如 💇 U+1F487，surrogate pair）= 2 码元 → 权重 4 → 贡献 2
+    - ZWJ 序列（如 💇‍♀️）= 5 码元 → 权重 10 → 贡献 5
+    - 旗帜（如 🇨🇳，2 个 regional indicator）= 4 码元 → 权重 8 → 贡献 4
 
     Examples:
         >>> calc_title_length("你好世界")
@@ -14,9 +26,10 @@ def calc_title_length(s: str) -> int:
         3
         >>> calc_title_length("OOTD穿搭分享")
         6
+        >>> calc_title_length("💇\u200d♀️")
+        5
     """
     byte_len = 0
-    # 用 UTF-16 编码来处理（包括 surrogate pairs）
     encoded = s.encode("utf-16-le")
     for i in range(0, len(encoded), 2):
         code_unit = int.from_bytes(encoded[i : i + 2], "little")
