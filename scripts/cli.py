@@ -12,6 +12,12 @@ import json
 import logging
 import sys
 
+# Windows 控制台默认编码（如 cp1252）不支持中文，强制 UTF-8
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -27,11 +33,40 @@ def _output(data: dict, exit_code: int = 0) -> None:
 
 def _connect(args: argparse.Namespace):
     """连接到 Chrome 并返回 (browser, page)。"""
+    from chrome_launcher import ensure_chrome
     from xhs.cdp import Browser
+
+    if not ensure_chrome(port=args.port):
+        _output(
+            {"success": False, "error": "无法启动 Chrome，请检查 Chrome 是否已安装"},
+            exit_code=2,
+        )
 
     browser = Browser(host=args.host, port=args.port)
     browser.connect()
     page = browser.new_page()
+    return browser, page
+
+
+def _connect_existing(args: argparse.Namespace):
+    """连接到 Chrome 并复用已有页面（用于分步发布的后续步骤）。"""
+    from chrome_launcher import ensure_chrome
+    from xhs.cdp import Browser
+
+    if not ensure_chrome(port=args.port):
+        _output(
+            {"success": False, "error": "无法连接到 Chrome"},
+            exit_code=2,
+        )
+
+    browser = Browser(host=args.host, port=args.port)
+    browser.connect()
+    page = browser.get_existing_page()
+    if not page:
+        _output(
+            {"success": False, "error": "未找到已打开的页面，请先执行前置步骤"},
+            exit_code=2,
+        )
     return browser, page
 
 
@@ -332,7 +367,7 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
             }
         )
     finally:
-        browser.close_page(page)
+        # 不关闭页面，让用户在浏览器中预览
         browser.close()
 
 
@@ -368,15 +403,15 @@ def cmd_fill_publish_video(args: argparse.Namespace) -> None:
             }
         )
     finally:
-        browser.close_page(page)
+        # 不关闭页面，让用户在浏览器中预览
         browser.close()
 
 
 def cmd_click_publish(args: argparse.Namespace) -> None:
-    """点击发布按钮（在用户确认后调用）。"""
+    """点击发布按钮（在用户确认后调用）。复用已有的发布页 tab。"""
     from xhs.publish import click_publish_button
 
-    browser, page = _connect(args)
+    browser, page = _connect_existing(args)
     try:
         click_publish_button(page)
         _output({"success": True, "status": "发布完成"})
@@ -410,15 +445,15 @@ def cmd_long_article(args: argparse.Namespace) -> None:
             }
         )
     finally:
-        browser.close_page(page)
+        # 不关闭页面，后续 select-template / next-step 需要复用
         browser.close()
 
 
 def cmd_select_template(args: argparse.Namespace) -> None:
-    """选择排版模板。"""
+    """选择排版模板。复用已有的长文编辑页 tab。"""
     from xhs.publish_long_article import select_template
 
-    browser, page = _connect(args)
+    browser, page = _connect_existing(args)
     try:
         selected = select_template(page, args.name)
         if selected:
@@ -429,23 +464,23 @@ def cmd_select_template(args: argparse.Namespace) -> None:
                 exit_code=2,
             )
     finally:
-        browser.close_page(page)
+        # 不关闭页面，后续 next-step 需要复用
         browser.close()
 
 
 def cmd_next_step(args: argparse.Namespace) -> None:
-    """点击下一步 + 填写发布页描述。"""
+    """点击下一步 + 填写发布页描述。复用已有的长文编辑页 tab。"""
     from xhs.publish_long_article import click_next_and_fill_description
 
     with open(args.content_file, encoding="utf-8") as f:
         description = f.read().strip()
 
-    browser, page = _connect(args)
+    browser, page = _connect_existing(args)
     try:
         click_next_and_fill_description(page, description)
         _output({"success": True, "status": "已进入发布页，等待确认发布"})
     finally:
-        browser.close_page(page)
+        # 不关闭页面，等待 click-publish
         browser.close()
 
 

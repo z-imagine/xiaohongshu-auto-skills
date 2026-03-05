@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import time
 from typing import Any
 
@@ -14,7 +15,7 @@ import requests
 import websockets.sync.client as ws_client
 
 from .errors import CDPError, ElementNotFoundError
-from .stealth import STEALTH_JS
+from .stealth import REALISTIC_UA, STEALTH_JS
 
 logger = logging.getLogger(__name__)
 
@@ -211,15 +212,25 @@ class Page:
         raise ElementNotFoundError(selector)
 
     def click_element(self, selector: str) -> None:
-        """点击指定选择器的元素。"""
-        self.evaluate(
+        """点击指定选择器的元素（通过 CDP Input 事件，isTrusted=true）。"""
+        box = self.evaluate(
             f"""
             (() => {{
                 const el = document.querySelector({json.dumps(selector)});
-                if (el) el.click();
+                if (!el) return null;
+                el.scrollIntoView({{block: 'center'}});
+                const rect = el.getBoundingClientRect();
+                return {{x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}};
             }})()
             """
         )
+        if not box:
+            return
+        x = box["x"] + random.uniform(-3, 3)
+        y = box["y"] + random.uniform(-3, 3)
+        self.mouse_move(x, y)
+        time.sleep(random.uniform(0.03, 0.08))
+        self.mouse_click(x, y)
 
     def input_text(self, selector: str, text: str) -> None:
         """向指定选择器的元素输入文本。"""
@@ -237,18 +248,59 @@ class Page:
         )
 
     def input_content_editable(self, selector: str, text: str) -> None:
-        """向 contentEditable 元素输入文本（如 div.ql-editor）。"""
+        """向 contentEditable 元素输入文本（CDP 逐字输入，模拟真实打字）。"""
+        # 1. focus 元素
         self.evaluate(
             f"""
             (() => {{
                 const el = document.querySelector({json.dumps(selector)});
-                if (!el) return;
-                el.focus();
-                el.textContent = {json.dumps(text)};
-                el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                if (el) el.focus();
             }})()
             """
         )
+        time.sleep(0.1)
+        # 2. 全选清空（Ctrl+A + Backspace）
+        self._send_session(
+            "Input.dispatchKeyEvent",
+            {"type": "keyDown", "key": "a", "code": "KeyA", "modifiers": 2},
+        )
+        self._send_session(
+            "Input.dispatchKeyEvent",
+            {"type": "keyUp", "key": "a", "code": "KeyA", "modifiers": 2},
+        )
+        self._send_session(
+            "Input.dispatchKeyEvent",
+            {
+                "type": "keyDown",
+                "key": "Backspace",
+                "code": "Backspace",
+                "windowsVirtualKeyCode": 8,
+            },
+        )
+        self._send_session(
+            "Input.dispatchKeyEvent",
+            {
+                "type": "keyUp",
+                "key": "Backspace",
+                "code": "Backspace",
+                "windowsVirtualKeyCode": 8,
+            },
+        )
+        time.sleep(0.1)
+        # 3. 逐字输入（随机 30-80ms 间隔，换行符转为 Enter 键）
+        for char in text:
+            if char == "\n":
+                self.press_key("Enter")
+            else:
+                self._send_session(
+                    "Input.dispatchKeyEvent",
+                    {"type": "keyDown", "text": char},
+                )
+                self._send_session(
+                    "Input.dispatchKeyEvent",
+                    {"type": "keyUp", "text": char},
+                )
+            time.sleep(random.uniform(0.03, 0.08))
 
     def get_element_text(self, selector: str) -> str | None:
         """获取元素文本内容。"""
@@ -500,13 +552,30 @@ class Browser:
 
         page = Page(self._cdp, target_id, session_id)
 
+        # 注入反检测（必须在 enable domains 之前）
+        page.inject_stealth()
+
+        # UA 覆盖
+        page._send_session(
+            "Emulation.setUserAgentOverride",
+            {"userAgent": REALISTIC_UA},
+        )
+
+        # 随机 viewport（模拟真实屏幕尺寸）
+        page._send_session(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": random.randint(1366, 1920),
+                "height": random.randint(768, 1080),
+                "deviceScaleFactor": 1,
+                "mobile": False,
+            },
+        )
+
         # 启用必要的 domain
         page._send_session("Page.enable")
         page._send_session("DOM.enable")
         page._send_session("Runtime.enable")
-
-        # 注入反检测
-        page.inject_stealth()
 
         return page
 

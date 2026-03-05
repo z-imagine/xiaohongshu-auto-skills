@@ -58,6 +58,15 @@ _INACCESSIBLE_KEYWORDS = [
     "仅作者可见",
     "因用户设置，你无法查看",
     "因违规无法查看",
+    "Isn't Available",
+    "isn't available",
+]
+
+# 扫码验证关键词（触发反爬机制）
+_SCAN_QRCODE_KEYWORDS = [
+    "扫码查看",
+    "打开小红书App扫码",
+    "请使用小红书App扫码",
 ]
 
 _REPLY_COUNT_RE = re.compile(r"展开\s*(\d+)\s*条回复")
@@ -110,10 +119,10 @@ def get_feed_detail(
     else:
         raise RuntimeError("页面导航失败")
 
-    sleep_random(1000, 1000)
+    sleep_random(800, 1500)
 
-    # 检查页面可访问性
-    _check_page_accessible(page)
+    # 检查页面可访问性（扫码验证时自动等待重试）
+    _check_page_accessible(page, url)
 
     # 加载全部评论
     if load_all_comments:
@@ -128,8 +137,11 @@ def get_feed_detail(
 # ========== 页面检查 ==========
 
 
-def _check_page_accessible(page: Page) -> None:
-    """检查页面是否可访问。"""
+def _check_page_accessible(page: Page, url: str = "") -> None:
+    """检查页面是否可访问。
+
+    扫码验证场景：等待 10 秒后自动重新访问，验证消失则继续，否则报错。
+    """
     time.sleep(0.5)
 
     text = page.get_element_text(ACCESS_ERROR_WRAPPER)
@@ -137,12 +149,39 @@ def _check_page_accessible(page: Page) -> None:
         return
 
     text = text.strip()
+
+    # 检测扫码验证（反爬机制触发）→ 等待后重试
+    if _is_scan_qrcode_verification(text) and url:
+        logger.warning("触发小红书扫码验证，等待 10 秒后重新访问...")
+        time.sleep(10)
+        page.navigate(url)
+        page.wait_for_load()
+        page.wait_dom_stable()
+        time.sleep(1)
+
+        retry_text = page.get_element_text(ACCESS_ERROR_WRAPPER)
+        if retry_text and _is_scan_qrcode_verification(retry_text.strip()):
+            raise PageNotAccessibleError(
+                "触发了小红书验证，需要在浏览器中扫码完成验证后重试。"
+                "这通常是小红书的反爬机制，请稍后再试或在 Chrome 中手动打开该笔记完成验证"
+            )
+        if not retry_text or not retry_text.strip():
+            logger.info("验证已消失，继续加载笔记")
+            return
+        # 重试后仍有其他错误，继续走下面的关键词检测
+        text = retry_text.strip()
+
     for kw in _INACCESSIBLE_KEYWORDS:
         if kw in text:
             raise PageNotAccessibleError(kw)
 
     if text:
         raise PageNotAccessibleError(text)
+
+
+def _is_scan_qrcode_verification(text: str) -> bool:
+    """判断页面文本是否为扫码验证。"""
+    return any(kw in text for kw in _SCAN_QRCODE_KEYWORDS)
 
 
 # ========== 数据提取 ==========

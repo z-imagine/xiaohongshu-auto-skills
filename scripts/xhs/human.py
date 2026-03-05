@@ -32,6 +32,11 @@ def sleep_random(min_ms: int, max_ms: int) -> None:
     time.sleep(delay)
 
 
+def navigation_delay() -> None:
+    """页面导航后的随机等待，模拟人类阅读。"""
+    sleep_random(1000, 2500)
+
+
 def get_scroll_interval(speed: str) -> float:
     """根据速度获取滚动间隔（秒）。"""
     if speed == "slow":

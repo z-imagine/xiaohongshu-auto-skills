@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from .cdp import Page
 from .feed_detail import _check_end_container, _check_page_accessible, _get_comment_count
+from .human import sleep_random
 from .selectors import (
     COMMENT_INPUT_FIELD,
     COMMENT_INPUT_TRIGGER,
@@ -37,7 +37,7 @@ def post_comment(page: Page, feed_id: str, xsec_token: str, content: str) -> Non
     page.navigate(url)
     page.wait_for_load()
     page.wait_dom_stable()
-    time.sleep(1)
+    sleep_random(800, 1500)
 
     _check_page_accessible(page)
 
@@ -46,27 +46,16 @@ def post_comment(page: Page, feed_id: str, xsec_token: str, content: str) -> Non
         raise RuntimeError("未找到评论输入框，该帖子可能不支持评论或网页端不可访问")
 
     page.click_element(COMMENT_INPUT_TRIGGER)
-    time.sleep(0.5)
+    sleep_random(400, 800)
 
-    # 输入评论内容
+    # 输入评论内容（CDP 逐字输入）
     page.wait_for_element(COMMENT_INPUT_FIELD, timeout=5)
-    page.evaluate(
-        f"""
-        (() => {{
-            const el = document.querySelector({_js_str(COMMENT_INPUT_FIELD)});
-            if (el) {{
-                el.focus();
-                el.textContent = {_js_str(content)};
-                el.dispatchEvent(new Event('input', {{bubbles: true}}));
-            }}
-        }})()
-        """
-    )
-    time.sleep(1)
+    page.input_content_editable(COMMENT_INPUT_FIELD, content)
+    sleep_random(600, 1200)
 
     # 点击提交
     page.click_element(COMMENT_SUBMIT_BUTTON)
-    time.sleep(1)
+    sleep_random(800, 1500)
 
     logger.info("评论发送成功: feed=%s", feed_id)
 
@@ -103,42 +92,31 @@ def reply_comment(
     page.navigate(url)
     page.wait_for_load()
     page.wait_dom_stable()
-    time.sleep(1)
+    sleep_random(800, 1500)
 
     _check_page_accessible(page)
-    time.sleep(2)
+    sleep_random(1500, 2500)
 
     # 查找目标评论
     comment_found = _find_and_scroll_to_comment(page, comment_id, user_id)
     if not comment_found:
         raise RuntimeError(f"未找到评论 (commentID: {comment_id}, userID: {user_id})")
 
-    time.sleep(1)
+    sleep_random(800, 1500)
 
     # 点击回复按钮
     reply_selector = f"#comment-{comment_id} {REPLY_BUTTON}" if comment_id else REPLY_BUTTON
     page.click_element(reply_selector)
-    time.sleep(1)
+    sleep_random(800, 1500)
 
-    # 输入回复内容
+    # 输入回复内容（CDP 逐字输入）
     page.wait_for_element(COMMENT_INPUT_FIELD, timeout=5)
-    page.evaluate(
-        f"""
-        (() => {{
-            const el = document.querySelector({_js_str(COMMENT_INPUT_FIELD)});
-            if (el) {{
-                el.focus();
-                el.textContent = {_js_str(content)};
-                el.dispatchEvent(new Event('input', {{bubbles: true}}));
-            }}
-        }})()
-        """
-    )
-    time.sleep(0.5)
+    page.input_content_editable(COMMENT_INPUT_FIELD, content)
+    sleep_random(600, 1200)
 
     # 点击提交
     page.click_element(COMMENT_SUBMIT_BUTTON)
-    time.sleep(2)
+    sleep_random(1500, 2500)
 
     logger.info("回复评论成功")
 
@@ -154,7 +132,7 @@ def _find_and_scroll_to_comment(
 
     # 先滚动到评论区
     page.scroll_element_into_view(".comments-container")
-    time.sleep(1)
+    sleep_random(800, 1500)
 
     last_count = 0
     stagnant = 0
@@ -179,11 +157,11 @@ def _find_and_scroll_to_comment(
         # 滚动到最后一条评论
         if current_count > 0:
             page.scroll_nth_element_into_view(PARENT_COMMENT, current_count - 1)
-            time.sleep(0.3)
+            sleep_random(200, 500)
 
         # 继续滚动
         page.evaluate("window.scrollBy(0, window.innerHeight * 0.8)")
-        time.sleep(0.5)
+        sleep_random(400, 800)
 
         # 通过 commentID 查找
         if comment_id:
@@ -215,7 +193,7 @@ def _find_and_scroll_to_comment(
                 logger.info("通过 userID 找到评论 (尝试 %d 次)", attempt + 1)
                 return True
 
-        time.sleep(0.8)
+        sleep_random(600, 1200)
 
     return False
 

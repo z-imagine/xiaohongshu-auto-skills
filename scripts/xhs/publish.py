@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
 import time
 
 from .cdp import Page
@@ -127,27 +128,31 @@ def _navigate_to_publish_page(page: Page) -> None:
     """导航到发布页面。"""
     page.navigate(PUBLISH_URL)
     page.wait_for_load(timeout=300)
-    time.sleep(2)
+    time.sleep(3)
     page.wait_dom_stable()
-    time.sleep(1)
+    time.sleep(2)
 
 
 def _click_publish_tab(page: Page, tab_name: str) -> None:
     """点击发布页 TAB（上传图文/上传视频）。"""
-    page.wait_for_element(UPLOAD_CONTENT, timeout=15)
-
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
-        # 查找匹配的 TAB
+        # 查找匹配的 TAB（支持多种结构）
         found = page.evaluate(
             f"""
             (() => {{
-                const tabs = document.querySelectorAll({json.dumps(CREATOR_TAB)});
+                // 策略1: 查找 div.creator-tab（过滤隐藏元素）
+                let tabs = document.querySelectorAll({json.dumps(CREATOR_TAB)});
                 for (const tab of tabs) {{
-                    if (tab.textContent.trim() === {json.dumps(tab_name)}) {{
-                        // 检查是否被遮挡
+                    const titleSpan = tab.querySelector('span.title');
+                    const tabText = titleSpan ? titleSpan.textContent.trim() : tab.textContent.trim();
+                    if (tabText === {json.dumps(tab_name)}) {{
                         const rect = tab.getBoundingClientRect();
+                        const style = window.getComputedStyle(tab);
+                        // 跳过隐藏或被移出视口的元素
                         if (rect.width === 0 || rect.height === 0) continue;
+                        if (rect.left < 0 || rect.top < 0) continue;
+                        if (style.display === 'none' || style.visibility === 'hidden') continue;
                         const x = rect.left + rect.width / 2;
                         const y = rect.top + rect.height / 2;
                         const target = document.elementFromPoint(x, y);
@@ -158,6 +163,21 @@ def _click_publish_tab(page: Page, tab_name: str) -> None:
                         return 'blocked';
                     }}
                 }}
+                
+                // 策略2: 查找任意包含目标文本的元素
+                const allElements = document.querySelectorAll('*');
+                for (const el of allElements) {{
+                    if (el.children.length === 0 && el.textContent.trim() === {json.dumps(tab_name)}) {{
+                        const rect = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        if (rect.width === 0 || rect.height === 0) continue;
+                        if (rect.left < 0 || rect.top < 0) continue;
+                        if (style.display === 'none' || style.visibility === 'hidden') continue;
+                        el.click();
+                        return 'clicked';
+                    }}
+                }}
+                
                 return 'not_found';
             }})()
             """
@@ -172,6 +192,19 @@ def _click_publish_tab(page: Page, tab_name: str) -> None:
 
         time.sleep(0.2)
 
+    # 调试：输出页面信息
+    debug_info = page.evaluate("""
+        (() => {
+            const creatorTabs = document.querySelectorAll('div.creator-tab');
+            const tabTexts = Array.from(creatorTabs).map(t => ({
+                text: t.textContent.trim(),
+                html: t.outerHTML.substring(0, 200)
+            }));
+            const url = window.location.href;
+            return JSON.stringify({url, tabCount: creatorTabs.length, tabs: tabTexts});
+        })()
+    """)
+    logger.error("调试信息: %s", debug_info)
     raise PublishError(f"没有找到发布 TAB - {tab_name}")
 
 
@@ -223,6 +256,34 @@ def _wait_for_upload_complete(page: Page, expected_count: int) -> None:
 # ========== 表单提交 ==========
 
 
+def _extract_hashtags_from_content(content: str, tags: list[str]) -> tuple[str, list[str]]:
+    """从正文末尾提取 hashtag 行，合并到 tags 列表。
+
+    Returns:
+        (cleaned_content, merged_tags)
+    """
+    lines = content.rstrip().split("\n")
+    # 检查最后一行是否全是 #tag 格式
+    if lines:
+        last_line = lines[-1].strip()
+        hashtag_pattern = re.compile(r"^(#\S+\s*)+$")
+        if hashtag_pattern.match(last_line):
+            # 提取 hashtag
+            extracted = re.findall(r"#(\S+)", last_line)
+            # 合并到 tags（去重）
+            existing = {t.lstrip("#") for t in tags}
+            merged = list(tags)
+            for t in extracted:
+                if t not in existing:
+                    merged.append(t)
+                    existing.add(t)
+            # 去掉最后一行
+            cleaned = "\n".join(lines[:-1]).rstrip()
+            logger.info("从正文末尾提取 %d 个标签，合并后共 %d 个", len(extracted), len(merged))
+            return cleaned, merged
+    return content, list(tags)
+
+
 def _fill_publish_form(
     page: Page,
     title: str,
@@ -233,6 +294,9 @@ def _fill_publish_form(
     visibility: str,
 ) -> None:
     """填写表单（不点击发布）。"""
+    # 从正文末尾提取 hashtag 并合并到 tags
+    content, tags = _extract_hashtags_from_content(content, tags)
+
     # 标题
     page.input_text(TITLE_INPUT, title)
     time.sleep(0.5)
@@ -334,6 +398,10 @@ def _input_tags(page: Page, content_selector: str, tags: list[str]) -> None:
     """输入标签。"""
     time.sleep(1)
 
+    # 先点击正文编辑器，确保焦点在正文而非标题
+    page.click_element(content_selector)
+    time.sleep(0.3)
+
     # 移动光标到正文末尾（20次 ArrowDown）
     for _ in range(20):
         page.press_key("ArrowDown")
@@ -353,27 +421,32 @@ def _input_single_tag(page: Page, content_selector: str, tag: str) -> None:
     """输入单个标签。"""
     # 输入 #
     page.type_text("#", delay_ms=0)
-    time.sleep(0.2)
+    time.sleep(0.3)
 
-    # 逐字输入标签
+    # 逐字输入标签（随机间隔模拟真实输入）
     for char in tag:
-        page.type_text(char, delay_ms=50)
+        page.type_text(char, delay_ms=0)
+        time.sleep(random.uniform(0.05, 0.12))
 
-    time.sleep(1)
+    # 等待标签联想出现（最多 3 秒）
+    deadline = time.monotonic() + 3.0
+    clicked = False
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        if page.has_element(TAG_TOPIC_CONTAINER):
+            item_selector = f"{TAG_TOPIC_CONTAINER} {TAG_FIRST_ITEM}"
+            if page.has_element(item_selector):
+                page.click_element(item_selector)
+                logger.info("点击标签联想: %s", tag)
+                clicked = True
+                break
 
-    # 尝试点击标签联想
-    if page.has_element(TAG_TOPIC_CONTAINER):
-        item_selector = f"{TAG_TOPIC_CONTAINER} {TAG_FIRST_ITEM}"
-        if page.has_element(item_selector):
-            page.click_element(item_selector)
-            logger.info("点击标签联想: %s", tag)
-            time.sleep(0.5)
-            return
+    if not clicked:
+        # 没有联想，直接空格
+        logger.warning("未找到标签联想，直接输入空格: %s", tag)
+        page.type_text(" ", delay_ms=0)
 
-    # 没有联想，直接空格
-    logger.warning("未找到标签联想，直接输入空格: %s", tag)
-    page.type_text(" ", delay_ms=0)
-    time.sleep(0.5)
+    time.sleep(0.8)
 
 
 # ========== 定时发布 ==========

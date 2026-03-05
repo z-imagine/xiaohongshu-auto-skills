@@ -9,6 +9,7 @@ import tempfile
 import time
 
 from .cdp import Page
+from .human import sleep_random
 from .selectors import LOGIN_STATUS, QRCODE_IMG
 from .urls import EXPLORE_URL
 
@@ -23,7 +24,7 @@ def check_login_status(page: Page) -> bool:
     """
     page.navigate(EXPLORE_URL)
     page.wait_for_load()
-    time.sleep(1)
+    sleep_random(800, 1500)
 
     return page.has_element(LOGIN_STATUS)
 
@@ -38,7 +39,7 @@ def fetch_qrcode(page: Page) -> tuple[str, bool]:
     """
     page.navigate(EXPLORE_URL)
     page.wait_for_load()
-    time.sleep(2)
+    sleep_random(1500, 2500)
 
     # 检查是否已登录
     if page.has_element(LOGIN_STATUS):
