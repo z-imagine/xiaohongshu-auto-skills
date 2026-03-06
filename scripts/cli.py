@@ -33,10 +33,10 @@ def _output(data: dict, exit_code: int = 0) -> None:
 
 def _connect(args: argparse.Namespace):
     """连接到 Chrome 并返回 (browser, page)。"""
-    from chrome_launcher import ensure_chrome
+    from chrome_launcher import ensure_chrome, has_display
     from xhs.cdp import Browser
 
-    if not ensure_chrome(port=args.port):
+    if not ensure_chrome(port=args.port, headless=not has_display()):
         _output(
             {"success": False, "error": "无法启动 Chrome，请检查 Chrome 是否已安装"},
             exit_code=2,
@@ -50,10 +50,10 @@ def _connect(args: argparse.Namespace):
 
 def _connect_existing(args: argparse.Namespace):
     """连接到 Chrome 并复用已有页面（用于分步发布的后续步骤）。"""
-    from chrome_launcher import ensure_chrome
+    from chrome_launcher import ensure_chrome, has_display
     from xhs.cdp import Browser
 
-    if not ensure_chrome(port=args.port):
+    if not ensure_chrome(port=args.port, headless=not has_display()):
         _output(
             {"success": False, "error": "无法连接到 Chrome"},
             exit_code=2,
@@ -71,20 +71,31 @@ def _connect_existing(args: argparse.Namespace):
 
 
 def _headless_fallback(port: int) -> None:
-    """Headless 模式未登录时自动降级到有窗口模式。"""
-    from chrome_launcher import restart_chrome
+    """Headless 模式未登录时的处理：有桌面降级到有窗口模式，无桌面直接报错提示。"""
+    from chrome_launcher import has_display, restart_chrome
 
-    logger.info("Headless 模式未登录，切换到有窗口模式...")
-    restart_chrome(port=port, headless=False)
-    _output(
-        {
-            "success": False,
-            "error": "未登录",
-            "action": "switched_to_headed",
-            "message": "已切换到有窗口模式，请在浏览器中扫码登录",
-        },
-        exit_code=1,
-    )
+    if has_display():
+        logger.info("Headless 模式未登录，切换到有窗口模式...")
+        restart_chrome(port=port, headless=False)
+        _output(
+            {
+                "success": False,
+                "error": "未登录",
+                "action": "switched_to_headed",
+                "message": "已切换到有窗口模式，请在浏览器中扫码登录",
+            },
+            exit_code=1,
+        )
+    else:
+        _output(
+            {
+                "success": False,
+                "error": "未登录",
+                "action": "login_required",
+                "message": "无界面环境下请先运行 send-code --phone <手机号> 完成登录",
+            },
+            exit_code=1,
+        )
 
 
 # ========== 子命令实现 ==========
@@ -190,7 +201,7 @@ def cmd_phone_login(args: argparse.Namespace) -> None:
 
 def cmd_send_code(args: argparse.Namespace) -> None:
     """分步登录第一步：填写手机号并发送验证码，保持页面不关闭。"""
-    from chrome_launcher import restart_chrome
+    from chrome_launcher import has_display, restart_chrome
     from xhs.errors import RateLimitError
     from xhs.login import send_phone_code
 
@@ -210,7 +221,7 @@ def cmd_send_code(args: argparse.Namespace) -> None:
             browser.close()
             if attempt == 0:
                 logger.info("请求频率限制，重启 Chrome 后重试...")
-                restart_chrome(port=args.port)
+                restart_chrome(port=args.port, headless=not has_display())
                 continue
             _output({"success": False, "error": "请求太频繁，重启后仍失败，请稍后再试"}, exit_code=2)
         else:

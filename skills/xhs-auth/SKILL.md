@@ -50,17 +50,25 @@ python scripts/cli.py login
 
 #### 方式 B：手机验证码登录（无界面服务器，分两步）
 
-**第一步** — 询问用户手机号后发送验证码：
+**执行前必须先向用户索取手机号，不得自行假设或跳过此步。**
+
+**第一步** — 向用户询问手机号，然后发送验证码：
+
+> 请先问用户："请提供您的手机号（不含国家码，如 13800138000）"，获得回复后再执行以下命令。
+
 ```bash
-python scripts/cli.py send-code --phone <手机号>
+python scripts/cli.py send-code --phone <用户提供的手机号>
 ```
 - 自动填写手机号、勾选用户协议、点击"获取验证码"。
 - Chrome 页面保持打开，等待下一步。
 - 输出：`{"status": "code_sent", "message": "验证码已发送至 138****0000，请运行 verify-code --code <验证码>"}`
 
-**第二步** — 询问用户收到的验证码后提交：
+**第二步** — 向用户询问验证码，然后提交登录：
+
+> 告知用户验证码已发送，询问："请输入您收到的 6 位短信验证码"，获得回复后再执行以下命令。
+
 ```bash
-python scripts/cli.py verify-code --code <6位验证码>
+python scripts/cli.py verify-code --code <用户提供的6位验证码>
 ```
 - 自动填写验证码、点击登录。
 - 输出：`{"logged_in": true, "message": "登录成功"}`
