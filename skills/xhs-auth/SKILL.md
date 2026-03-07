@@ -39,6 +39,29 @@ metadata:
 | `send-code --phone` | 发送手机验证码 |
 | `verify-code --code` | 提交验证码完成登录 |
 | `delete-cookies` | 退出登录并清除 cookies |
+| `add-account --name` | 添加命名账号（自动分配端口） |
+| `list-accounts` | 列出所有命名账号及端口 |
+| `remove-account --name` | 删除命名账号 |
+| `set-default-account --name` | 设置默认账号 |
+
+---
+
+## 账号选择（前置步骤）
+
+> **例外**：用户要求"添加账号 / 列出账号 / 删除账号 / 设置默认账号"时，**跳过此步骤**，直接执行对应管理命令。
+
+其余操作（检查登录、登录、退出登录）先运行：
+
+```bash
+python scripts/cli.py list-accounts
+```
+
+根据返回的 `count`：
+- **0 个命名账号**：直接使用默认账号（后续命令不加 `--account`）。
+- **1 个命名账号**：告知用户"将对账号 X 执行操作"，直接加 `--account <名称>` 执行。
+- **多个命名账号**：向用户展示列表，询问操作哪个账号，用 `--account <选择的名称>` 执行后续命令。
+
+账号选定后，本次操作全程固定该账号，**不重复询问**。
 
 ---
 
@@ -131,6 +154,41 @@ python scripts/cli.py verify-code --code <用户提供的6位验证码>
 python scripts/cli.py delete-cookies
 python scripts/cli.py --account work delete-cookies  # 指定账号
 ```
+
+## 多账号工作流
+
+每个命名账号拥有独立端口（从 9223 起递增）和独立 Chrome Profile，账号之间完全隔离。
+
+### 添加账号
+
+```bash
+python scripts/cli.py add-account --name work --description "工作号"
+# 输出: {"success": true, "name": "work", "port": 9223, "profile_dir": "..."}
+
+python scripts/cli.py add-account --name personal
+# 输出: {"success": true, "name": "personal", "port": 9224, "profile_dir": "..."}
+```
+
+### 使用指定账号执行操作
+
+通过全局 `--account` 参数指定账号，CLI 自动切换到对应端口和 Chrome Profile：
+
+```bash
+python scripts/cli.py --account work check-login
+python scripts/cli.py --account work get-qrcode
+python scripts/cli.py --account personal check-login
+python scripts/cli.py check-login  # 不指定账号，使用默认端口 9222
+```
+
+### 管理账号
+
+```bash
+python scripts/cli.py list-accounts                      # 列出所有账号及端口
+python scripts/cli.py set-default-account --name work    # 设置默认账号
+python scripts/cli.py remove-account --name personal     # 删除账号
+```
+
+---
 
 ## 失败处理
 

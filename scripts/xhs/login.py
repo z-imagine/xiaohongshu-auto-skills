@@ -47,6 +47,23 @@ def _wait_for_auth_ui(page: Page, timeout: float = 8.0) -> None:
         time.sleep(0.2)
 
 
+def get_current_user_nickname(page: Page) -> str:
+    """获取当前登录用户的昵称，失败时返回空字符串（best-effort）。"""
+    try:
+        page.navigate(EXPLORE_URL)
+        page.wait_for_load()
+        _wait_for_auth_ui(page)
+        if not page.has_element(LOGIN_STATUS):
+            return ""
+        nickname = page.evaluate(
+            f"document.querySelector({json.dumps(LOGIN_STATUS)})?.innerText?.trim() || ''"
+        )
+        return nickname or ""
+    except Exception:
+        logger.warning("获取用户昵称失败")
+        return ""
+
+
 def check_login_status(page: Page) -> bool:
     """检查登录状态。
 
