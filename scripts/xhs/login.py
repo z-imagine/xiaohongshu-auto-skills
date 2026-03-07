@@ -214,9 +214,21 @@ def submit_phone_code(page: Page, code: str) -> bool:
     Returns:
         True 登录成功，False 失败（超时或验证码错误）。
     """
-    # 点击验证码输入框并逐字输入
+    # 点击验证码输入框，先清空已有内容（防止重试时追加导致验证码错误），再逐字输入
     page.click_element(CODE_INPUT)
     sleep_random(300, 500)
+    page.evaluate(
+        f"""(() => {{
+            const el = document.querySelector({json.dumps(CODE_INPUT)});
+            if (el && el.value) {{
+                const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                setter.call(el, '');
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            }}
+        }})()"""
+    )
     page.type_text(code, delay_ms=100)
     sleep_random(500, 800)
 
