@@ -447,7 +447,7 @@ def cmd_verify_code(args: argparse.Namespace) -> None:
             exit_code=0 if success else 2,
         )
     finally:
-        browser.close_page(page)
+        # 不关闭 tab——成功后供后续命令复用，失败后用户可再次运行 verify-code 重试
         browser.close()
 
 
