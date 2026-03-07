@@ -590,6 +590,28 @@ class Browser:
 
         return page
 
+    def get_page_by_target_id(self, target_id: str) -> Page | None:
+        """通过 target_id 精确连接到指定 tab。"""
+        if not self._cdp:
+            self.connect()
+        assert self._cdp is not None
+        try:
+            result = self._cdp.send(
+                "Target.attachToTarget",
+                {"targetId": target_id, "flatten": True},
+            )
+        except Exception:
+            return None
+        session_id = result.get("sessionId")
+        if not session_id:
+            return None
+        page = Page(self._cdp, target_id, session_id)
+        page._send_session("Page.enable")
+        page._send_session("DOM.enable")
+        page._send_session("Runtime.enable")
+        page.inject_stealth()
+        return page
+
     def get_existing_page(self) -> Page | None:
         """获取已有页面（取第一个非 about:blank 的 page target）。"""
         if not self._cdp:

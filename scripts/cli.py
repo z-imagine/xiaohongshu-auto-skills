@@ -8,9 +8,33 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
+import os
 import sys
+import tempfile
+
+# 记录登录用 tab 的 target_id，确保 verify-code / wait-login 连回精确的那个 tab
+_LOGIN_TAB_FILE = os.path.join(tempfile.gettempdir(), "xhs", "login_tab_id.txt")
+
+
+def _save_login_tab(target_id: str) -> None:
+    os.makedirs(os.path.dirname(_LOGIN_TAB_FILE), exist_ok=True)
+    with open(_LOGIN_TAB_FILE, "w") as f:
+        f.write(target_id)
+
+
+def _load_login_tab() -> str | None:
+    with contextlib.suppress(FileNotFoundError):
+        data = open(_LOGIN_TAB_FILE).read().strip()
+        return data or None
+    return None
+
+
+def _clear_login_tab() -> None:
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(_LOGIN_TAB_FILE)
 
 # Windows 控制台默认编码（如 cp1252）不支持中文，强制 UTF-8
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -45,6 +69,33 @@ def _connect(args: argparse.Namespace):
     browser = Browser(host=args.host, port=args.port)
     browser.connect()
     page = browser.new_page()
+    return browser, page
+
+
+def _connect_saved_tab(args: argparse.Namespace):
+    """连接到登录流程中记录的精确 tab（via _LOGIN_TAB_FILE），回退到第一个非空白 tab。"""
+    from chrome_launcher import ensure_chrome, has_display
+    from xhs.cdp import Browser
+
+    if not ensure_chrome(port=args.port, headless=not has_display()):
+        _output({"success": False, "error": "无法连接到 Chrome"}, exit_code=2)
+
+    browser = Browser(host=args.host, port=args.port)
+    browser.connect()
+
+    target_id = _load_login_tab()
+    if target_id:
+        page = browser.get_page_by_target_id(target_id)
+        if page:
+            return browser, page
+        logger.warning("保存的 tab (target_id=%s) 已失效，回退到第一个可用 tab", target_id)
+
+    page = browser.get_existing_page()
+    if not page:
+        _output(
+            {"success": False, "error": "未找到已打开的登录页面，请重新执行登录前置步骤"},
+            exit_code=2,
+        )
     return browser, page
 
 
@@ -234,6 +285,9 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
 
     qrcode_path, qrcode_data_url = save_qrcode_to_file(src)
 
+    # 记录 tab，供 wait-login 精确reconnect
+    _save_login_tab(page.target_id)
+
     # 只断开 CDP 连接，不关闭 tab——QR 会话保持，用户可继续扫码
     browser.close()
     _output({
@@ -250,9 +304,11 @@ def cmd_wait_login(args: argparse.Namespace) -> None:
     """
     from xhs.login import wait_for_login
 
-    browser, page = _connect_existing(args)
+    browser, page = _connect_saved_tab(args)
     try:
         success = wait_for_login(page, timeout=args.timeout)
+        if success:
+            _clear_login_tab()
         _output(
             {
                 "logged_in": success,
@@ -278,6 +334,8 @@ def cmd_send_code(args: argparse.Namespace) -> None:
                 _output({"logged_in": True, "message": "已登录，无需重新登录"})
                 return
 
+            # 记录 tab，供 verify-code 精确 reconnect
+            _save_login_tab(page.target_id)
             _output({
                 "status": "code_sent",
                 "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，请运行 verify-code --code <验证码>",
@@ -299,9 +357,11 @@ def cmd_verify_code(args: argparse.Namespace) -> None:
     """分步登录第二步：在已有页面上填写验证码并提交。"""
     from xhs.login import submit_phone_code
 
-    browser, page = _connect_existing(args)
+    browser, page = _connect_saved_tab(args)
     try:
         success = submit_phone_code(page, args.code)
+        if success:
+            _clear_login_tab()
         _output(
             {"logged_in": success, "message": "登录成功" if success else "验证码错误或超时"},
             exit_code=0 if success else 2,
