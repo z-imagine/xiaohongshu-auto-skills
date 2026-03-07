@@ -33,23 +33,12 @@ python scripts/cli.py check-login
 
 输出解读：
 - `"logged_in": true` → 已登录，可执行后续操作。
-- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，直接走二维码登录。
-- `"logged_in": false` + `"login_method": "both"` → 无界面服务器，**询问用户选择方式 A（二维码）或方式 B（手机验证码）**。
+- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，走方式 A（二维码）。
+- `"logged_in": false` + `"login_method": "both"` → 无界面服务器，**询问用户选方式 A（二维码）或方式 B（手机验证码）**。
 
-### 第二步：根据 login_method 选择登录方式
+### 第二步：根据输出选择登录方式
 
-#### 方式 A1：二维码登录 — 有界面（GUI）设备
-
-```bash
-python scripts/cli.py login
-```
-
-- Chrome **有窗口**弹出，二维码直接显示在浏览器窗口中。
-- 告知用户用小红书 App 扫屏幕上的二维码。
-- 命令阻塞等待（最多 120 秒），扫码成功后输出 `{"logged_in": true}`。
-- 无需在对话窗口显示图片。
-
-#### 方式 A2：二维码登录 — 无界面（headless）服务器
+#### 方式 A：二维码登录（所有平台通用）
 
 **第一步** — 获取二维码（非阻塞，立即返回）：
 
@@ -57,7 +46,7 @@ python scripts/cli.py login
 python scripts/cli.py get-qrcode
 ```
 
-- headless Chrome 加载登录页，从 `img` 元素读取二维码图片（相当于右键另存为）。
+- Chrome 正常启动，从登录弹窗 `img` 元素读取二维码（相当于右键另存为）。
 - 命令立即退出，Chrome tab 保持打开（QR 会话继续有效）。
 - 输出：`{"qrcode_path": "...", "qrcode_data_url": "data:image/png;base64,...", "message": "..."}`
 
@@ -67,16 +56,16 @@ python scripts/cli.py get-qrcode
 ![小红书登录二维码]({qrcode_data_url})
 ```
 
-图片本身已含 16px 白色边框，内嵌在对话窗口，用户用小红书 App 扫对话里的二维码即可。
+图片含 16px 白色边框，内嵌在对话窗口，用户用小红书 App 扫对话里的二维码。
 
-**第三步** — 轮询登录状态（每 10 秒一次，最多 12 次）：
+**第三步** — 等待登录完成（**单次调用，无需轮询**）：
 
 ```bash
-python scripts/cli.py check-login
+python scripts/cli.py wait-login
 ```
 
-- `"logged_in": true` 则完成。
-- 2 分钟内未登录，提示用户重新执行第一步。
+- 连接已有 Chrome tab，内部阻塞等待（最多 120 秒）。
+- 输出 `{"logged_in": true}` 则完成；超时则提示用户重新运行 `get-qrcode`。
 
 #### 方式 B：手机验证码登录（无界面服务器，分两步）
 
