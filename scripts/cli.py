@@ -15,47 +15,52 @@ import os
 import sys
 import tempfile
 
-# 记录登录用 tab 的 target_id，确保 verify-code / wait-login 连回精确的那个 tab
-_LOGIN_TAB_FILE = os.path.join(tempfile.gettempdir(), "xhs", "login_tab_id.txt")
-
-# 记录上次命令使用的 tab，供下次命令复用，避免重复开新 tab
-_SESSION_TAB_FILE = os.path.join(tempfile.gettempdir(), "xhs", "session_tab_id.txt")
+def _session_tab_file(port: int) -> str:
+    """返回指定端口的 session tab 文件路径（每账号独立隔离）。"""
+    return os.path.join(tempfile.gettempdir(), "xhs", f"session_tab_{port}.txt")
 
 
-def _save_login_tab(target_id: str) -> None:
-    os.makedirs(os.path.dirname(_LOGIN_TAB_FILE), exist_ok=True)
-    with open(_LOGIN_TAB_FILE, "w") as f:
+def _login_tab_file(port: int) -> str:
+    """返回指定端口的 login tab 文件路径（每账号独立隔离）。"""
+    return os.path.join(tempfile.gettempdir(), "xhs", f"login_tab_{port}.txt")
+
+
+def _save_login_tab(target_id: str, port: int) -> None:
+    path = _login_tab_file(port)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
         f.write(target_id)
 
 
-def _load_login_tab() -> str | None:
+def _load_login_tab(port: int) -> str | None:
     with contextlib.suppress(FileNotFoundError):
-        data = open(_LOGIN_TAB_FILE).read().strip()
+        data = open(_login_tab_file(port)).read().strip()
         return data or None
     return None
 
 
-def _clear_login_tab() -> None:
+def _clear_login_tab(port: int) -> None:
     with contextlib.suppress(FileNotFoundError):
-        os.remove(_LOGIN_TAB_FILE)
+        os.remove(_login_tab_file(port))
 
 
-def _save_session_tab(target_id: str) -> None:
-    os.makedirs(os.path.dirname(_SESSION_TAB_FILE), exist_ok=True)
-    with open(_SESSION_TAB_FILE, "w") as f:
+def _save_session_tab(target_id: str, port: int) -> None:
+    path = _session_tab_file(port)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
         f.write(target_id)
 
 
-def _load_session_tab() -> str | None:
+def _load_session_tab(port: int) -> str | None:
     with contextlib.suppress(FileNotFoundError):
-        data = open(_SESSION_TAB_FILE).read().strip()
+        data = open(_session_tab_file(port)).read().strip()
         return data or None
     return None
 
 
-def _clear_session_tab() -> None:
+def _clear_session_tab(port: int) -> None:
     with contextlib.suppress(FileNotFoundError):
-        os.remove(_SESSION_TAB_FILE)
+        os.remove(_session_tab_file(port))
 
 # Windows 控制台默认编码（如 cp1252）不支持中文，强制 UTF-8
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -76,16 +81,51 @@ def _output(data: dict, exit_code: int = 0) -> None:
     sys.exit(exit_code)
 
 
+def _update_account_nickname(args: argparse.Namespace, page) -> None:
+    """登录成功后，将平台昵称写入账号描述（best-effort，失败不影响登录结果）。"""
+    if not getattr(args, "account", ""):
+        return
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    import account_manager
+    from xhs.login import get_current_user_nickname
+
+    try:
+        nickname = get_current_user_nickname(page)
+        if nickname:
+            account_manager.update_account_description(args.account, nickname)
+            logger.info("账号 %s 昵称已更新: %s", args.account, nickname)
+    except Exception as e:
+        logger.warning("更新账号昵称失败: %s", e)
+
+
+def _resolve_account(args: argparse.Namespace) -> str | None:
+    """解析 --account 参数，更新 args.port，返回 user_data_dir（无账号时返回 None）。"""
+    if not getattr(args, "account", ""):
+        return None
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    import account_manager
+
+    name = args.account
+    args.port = account_manager.get_account_port(name)
+    return account_manager.get_profile_dir(name)
+
+
 def _connect(args: argparse.Namespace):
     """连接到 Chrome 并返回 (browser, page)。
 
-    优先复用上次命令留下的 tab（通过 _SESSION_TAB_FILE 记录），
+    优先复用上次命令留下的 tab（通过端口隔离的 session tab 文件记录），
     避免每次命令都新建 tab 导致 Chrome 中 tab 堆积。
     """
     from chrome_launcher import ensure_chrome, has_display
     from xhs.cdp import Browser
 
-    if not ensure_chrome(port=args.port, headless=not has_display()):
+    user_data_dir = _resolve_account(args)
+
+    if not ensure_chrome(port=args.port, headless=not has_display(), user_data_dir=user_data_dir):
         _output(
             {"success": False, "error": "无法启动 Chrome，请检查 Chrome 是否已安装"},
             exit_code=2,
@@ -95,32 +135,34 @@ def _connect(args: argparse.Namespace):
     browser.connect()
 
     # 优先复用上次命令留下的 tab
-    saved_id = _load_session_tab()
+    saved_id = _load_session_tab(args.port)
     if saved_id:
         page = browser.get_page_by_target_id(saved_id)
         if page:
             logger.debug("复用会话 tab: %s", saved_id)
-            _save_session_tab(page.target_id)
+            _save_session_tab(page.target_id, args.port)
             return browser, page
         logger.warning("会话 tab (target_id=%s) 已失效，重新获取", saved_id)
 
     page = browser.get_or_create_page()
-    _save_session_tab(page.target_id)
+    _save_session_tab(page.target_id, args.port)
     return browser, page
 
 
 def _connect_saved_tab(args: argparse.Namespace):
-    """连接到登录流程中记录的精确 tab（via _LOGIN_TAB_FILE），回退到第一个非空白 tab。"""
+    """连接到登录流程中记录的精确 tab，回退到第一个非空白 tab。"""
     from chrome_launcher import ensure_chrome, has_display
     from xhs.cdp import Browser
 
-    if not ensure_chrome(port=args.port, headless=not has_display()):
+    user_data_dir = _resolve_account(args)
+
+    if not ensure_chrome(port=args.port, headless=not has_display(), user_data_dir=user_data_dir):
         _output({"success": False, "error": "无法连接到 Chrome"}, exit_code=2)
 
     browser = Browser(host=args.host, port=args.port)
     browser.connect()
 
-    target_id = _load_login_tab()
+    target_id = _load_login_tab(args.port)
     if target_id:
         page = browser.get_page_by_target_id(target_id)
         if page:
@@ -141,7 +183,9 @@ def _connect_existing(args: argparse.Namespace):
     from chrome_launcher import ensure_chrome, has_display
     from xhs.cdp import Browser
 
-    if not ensure_chrome(port=args.port, headless=not has_display()):
+    user_data_dir = _resolve_account(args)
+
+    if not ensure_chrome(port=args.port, headless=not has_display(), user_data_dir=user_data_dir):
         _output(
             {"success": False, "error": "无法连接到 Chrome"},
             exit_code=2,
@@ -244,6 +288,8 @@ def cmd_login(args: argparse.Namespace) -> None:
             )
         )
         success = wait_for_login(page, timeout=120)
+        if success:
+            _update_account_nickname(args, page)
         _output(
             {"logged_in": success, "message": "登录成功" if success else "登录超时"},
             exit_code=0 if success else 2,
@@ -293,7 +339,7 @@ def cmd_phone_login(args: argparse.Namespace) -> None:
             exit_code=0 if success else 2,
         )
     finally:
-        browser.close_page(page)
+        # 不关闭 tab——与 verify-code 一致，保留页面供重试
         browser.close()
 
 
@@ -318,8 +364,10 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
 
     qrcode_path = save_qrcode_to_file(png_bytes)
 
-    # 记录 tab，供 wait-login 精确reconnect
-    _save_login_tab(page.target_id)
+    # 记录 login tab，供 wait-login 精确 reconnect
+    _save_login_tab(page.target_id, args.port)
+    # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
+    _clear_session_tab(args.port)
 
     # 只断开 CDP 连接，不关闭 tab——QR 会话保持，用户可继续扫码
     browser.close()
@@ -340,7 +388,8 @@ def cmd_wait_login(args: argparse.Namespace) -> None:
     try:
         success = wait_for_login(page, timeout=args.timeout)
         if success:
-            _clear_login_tab()
+            _clear_login_tab(args.port)
+            _update_account_nickname(args, page)
         _output(
             {
                 "logged_in": success,
@@ -366,8 +415,10 @@ def cmd_send_code(args: argparse.Namespace) -> None:
                 _output({"logged_in": True, "message": "已登录，无需重新登录"})
                 return
 
-            # 记录 tab，供 verify-code 精确 reconnect
-            _save_login_tab(page.target_id)
+            # 记录 login tab，供 verify-code 精确 reconnect
+            _save_login_tab(page.target_id, args.port)
+            # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
+            _clear_session_tab(args.port)
             _output({
                 "status": "code_sent",
                 "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，请运行 verify-code --code <验证码>",
@@ -393,13 +444,14 @@ def cmd_verify_code(args: argparse.Namespace) -> None:
     try:
         success = submit_phone_code(page, args.code)
         if success:
-            _clear_login_tab()
+            _clear_login_tab(args.port)
+            _update_account_nickname(args, page)
         _output(
             {"logged_in": success, "message": "登录成功" if success else "验证码错误或超时"},
             exit_code=0 if success else 2,
         )
     finally:
-        browser.close_page(page)
+        # 不关闭 tab——成功后供后续命令复用，失败后用户可再次运行 verify-code 重试
         browser.close()
 
 
@@ -420,7 +472,7 @@ def cmd_delete_cookies(args: argparse.Namespace) -> None:
     path = get_cookies_file_path(args.account)
     delete_cookies(path)
 
-    _clear_session_tab()  # 退出登录后清除会话 tab 记录
+    _clear_session_tab(args.port)  # 退出登录后清除会话 tab 记录
     msg = "已退出登录并删除 cookies" if logged_out else "未登录，已删除 cookies 文件"
     _output({"success": True, "message": msg, "cookies_path": path})
 
@@ -817,6 +869,55 @@ def cmd_publish_video(args: argparse.Namespace) -> None:
         browser.close()
 
 
+# ========== 账号管理子命令 ==========
+
+
+def cmd_add_account(args: argparse.Namespace) -> None:
+    """添加命名账号，自动分配独立端口和 Chrome Profile。"""
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    import account_manager
+
+    account_manager.add_account(args.name, description=args.description or "")
+    port = account_manager.get_account_port(args.name)
+    profile = account_manager.get_profile_dir(args.name)
+    _output({"success": True, "name": args.name, "port": port, "profile_dir": profile})
+
+
+def cmd_list_accounts(args: argparse.Namespace) -> None:
+    """列出所有命名账号。"""
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    import account_manager
+
+    accounts = account_manager.list_accounts()
+    _output({"accounts": accounts, "count": len(accounts)})
+
+
+def cmd_remove_account(args: argparse.Namespace) -> None:
+    """删除命名账号。"""
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    import account_manager
+
+    account_manager.remove_account(args.name)
+    _output({"success": True, "name": args.name})
+
+
+def cmd_set_default_account(args: argparse.Namespace) -> None:
+    """设置默认账号。"""
+    import sys as _sys
+
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    import account_manager
+
+    account_manager.set_default_account(args.name)
+    _output({"success": True, "default": args.name})
+
+
 # ========== 参数解析 ==========
 
 
@@ -1000,6 +1101,26 @@ def build_parser() -> argparse.ArgumentParser:
     # save-draft（保存草稿）
     sub = subparsers.add_parser("save-draft", help="保存为草稿（取消发布时使用）")
     sub.set_defaults(func=cmd_save_draft)
+
+    # add-account（添加命名账号）
+    sub = subparsers.add_parser("add-account", help="添加命名账号，自动分配独立端口")
+    sub.add_argument("--name", required=True, help="账号名称")
+    sub.add_argument("--description", default="", help="账号描述（可选）")
+    sub.set_defaults(func=cmd_add_account)
+
+    # list-accounts（列出所有账号）
+    sub = subparsers.add_parser("list-accounts", help="列出所有命名账号")
+    sub.set_defaults(func=cmd_list_accounts)
+
+    # remove-account（删除账号）
+    sub = subparsers.add_parser("remove-account", help="删除命名账号")
+    sub.add_argument("--name", required=True, help="账号名称")
+    sub.set_defaults(func=cmd_remove_account)
+
+    # set-default-account（设置默认账号）
+    sub = subparsers.add_parser("set-default-account", help="设置默认账号")
+    sub.add_argument("--name", required=True, help="账号名称")
+    sub.set_defaults(func=cmd_set_default_account)
 
     return parser
 
