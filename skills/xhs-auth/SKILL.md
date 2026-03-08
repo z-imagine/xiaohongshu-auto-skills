@@ -89,20 +89,25 @@ python scripts/cli.py check-login
 
 输出解读：
 - `"logged_in": true` → 已登录，可执行后续操作。
-- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，走方式 A（二维码）。输出自动包含 `qrcode_data_url` 和 `qrcode_path`。
+- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，走方式 A（二维码）。输出自动包含 `qrcode_image_url` 和 `qrcode_path`。
 - `"logged_in": false` + `"login_method": "both"` → 无界面服务器，输出自动包含二维码，**询问用户选方式 A（二维码）或方式 B（手机验证码）**。
 
 ### 第二步：根据输出选择登录方式
 
 #### 方式 A：二维码登录（所有平台通用）
 
-> `check-login` 未登录时会自动返回二维码（`qrcode_data_url` + `qrcode_path`），无需单独调 `get-qrcode`。
+> `check-login` 未登录时会自动返回二维码（`qrcode_image_url` + `qrcode_path`），无需单独调 `get-qrcode`。
 
-**第一步** — 从 `check-login` 返回的 JSON 取 `qrcode_data_url`，在回复中直接写出：
+**第一步** — 从 `check-login` 返回的 JSON 取 `qrcode_image_url`，在回复中展示：
 
 ```
-![小红书登录二维码]({qrcode_data_url})
+请使用小红书 App 扫描以下二维码登录：
+
+![小红书登录二维码]({qrcode_image_url})
 ```
+
+> **展示规范**：如果输出含 `qr_login_url`（小红书官方登录链接），必须同时展示给用户，增加信任感：
+> "二维码对应的小红书登录链接：{qr_login_url}"。
 
 图片内嵌在对话窗口，用户用小红书 App 扫对话里的二维码。
 
@@ -135,7 +140,7 @@ python scripts/cli.py send-code --phone <用户确认的手机号>
 - 自动填写手机号、勾选用户协议、点击"获取验证码"。
 - Chrome 页面保持打开，等待下一步。
 - 正常输出：`{"status": "code_sent", "message": "..."}`
-- **频率限制**：自动切换为二维码登录，输出含 `qrcode_data_url`。告知用户"验证码发送受限，已切换为二维码登录"，展示二维码，然后运行 `wait-login`。
+- **频率限制**：自动切换为二维码登录，输出含 `qrcode_image_url`。告知用户"验证码发送受限，已切换为二维码登录"，按方式 A 的展示规范展示二维码，然后运行 `wait-login`。
 
 **第二步** — 向用户询问验证码，然后提交登录：
 

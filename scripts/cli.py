@@ -253,99 +253,101 @@ def _headless_fallback(port: int) -> None:
 
 def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
     """频率限制时刷新页面返回二维码，让 AI 直接展示给用户扫码。"""
-    from xhs.login import fetch_qrcode, save_qrcode_to_file
+    from xhs.login import (
+        fetch_qrcode,
+        make_qrcode_url,
+        save_qrcode_to_file,
+    )
     from xhs.urls import EXPLORE_URL
 
     # 刷新页面使登录弹窗回到默认的二维码 tab
     page.navigate(EXPLORE_URL)
     page.wait_for_load()
 
-    png_bytes, already = fetch_qrcode(page)
+    png_bytes, _b64_orig, already = fetch_qrcode(page)
     if already:
         browser.close()
         _output({"logged_in": True, "message": "已登录"})
         return
 
     qrcode_path = save_qrcode_to_file(png_bytes)
-
-    import base64 as _b64
-    qrcode_data_url = (
-        "data:image/png;base64,"
-        + _b64.b64encode(png_bytes).decode()
-    )
+    image_url, login_url = make_qrcode_url(png_bytes)
 
     _open_file_if_display(qrcode_path)
 
     _save_login_tab(page.target_id, args.port)
     _clear_session_tab(args.port)
     browser.close()
-    _output({
+    result: dict = {
         "logged_in": False,
         "login_method": "qrcode",
         "qrcode_path": qrcode_path,
-        "qrcode_data_url": qrcode_data_url,
+        "qrcode_image_url": image_url,
         "message": (
             "验证码发送受限，已切换为二维码登录，请扫码。"
             "扫码后运行 wait-login 等待登录结果。"
         ),
-    }, exit_code=1)
+    }
+    if login_url:
+        result["qr_login_url"] = login_url
+    _output(result, exit_code=1)
 
 
 # ========== 子命令实现 ==========
 
 
 def cmd_check_login(args: argparse.Namespace) -> None:
-    """检查登录状态。未登录时自动获取二维码，省去单独调 get-qrcode 的一轮通信。"""
-    from xhs.login import check_login_status, fetch_qrcode, save_qrcode_to_file
+    """检查登录状态。未登录时自动获取二维码，省去单独调 get-qrcode 的一轮通信。
+
+    直接调 fetch_qrcode 一步完成：导航 + 登录检查 + 二维码获取，
+    不再经过 check_login_status 避免重复导航和等待。
+    """
+    from xhs.login import (
+        fetch_qrcode,
+        make_qrcode_url,
+        save_qrcode_to_file,
+    )
 
     browser, page = _connect(args)
     try:
-        logged_in = check_login_status(page)
-        if logged_in:
-            _output({"logged_in": True}, exit_code=0)
-            return
-
-        # 未登录——当前页面已在登录弹窗，复用页面直接获取二维码
-        png_bytes, already = fetch_qrcode(page)
+        png_bytes, _b64_orig, already = fetch_qrcode(page)
         if already:
             _output({"logged_in": True}, exit_code=0)
             return
 
         qrcode_path = save_qrcode_to_file(png_bytes)
+        image_url, login_url = make_qrcode_url(png_bytes)
 
-        # 生成 data URL，AI 可直接内嵌到 markdown 图片
-        import base64 as _b64
-        qrcode_data_url = "data:image/png;base64," + _b64.b64encode(png_bytes).decode()
-
-        # 记录 login tab + 清除 session tab（与 cmd_get_qrcode 一致）
+        # 记录 login tab + 清除 session tab
         _save_login_tab(page.target_id, args.port)
         _clear_session_tab(args.port)
 
-        # CLI 终端有桌面时自动打开二维码图片
         _open_file_if_display(qrcode_path)
 
         from chrome_launcher import has_display
 
+        result: dict = {
+            "logged_in": False,
+            "qrcode_path": qrcode_path,
+            "qrcode_image_url": image_url,
+        }
+        if login_url:
+            result["qr_login_url"] = login_url
         if has_display():
-            _output({
-                "logged_in": False,
-                "login_method": "qrcode",
-                "qrcode_path": qrcode_path,
-                "qrcode_data_url": qrcode_data_url,
-                "hint": "未登录，二维码已自动生成。扫码后运行 wait-login 等待登录结果",
-            }, exit_code=1)
+            result["login_method"] = "qrcode"
+            result["hint"] = (
+                "未登录，二维码已自动生成。"
+                "扫码后运行 wait-login 等待登录结果"
+            )
         else:
-            _output({
-                "logged_in": False,
-                "login_method": "both",
-                "qrcode_path": qrcode_path,
-                "qrcode_data_url": qrcode_data_url,
-                "hint": (
-                    "未登录，二维码已自动生成。"
-                    "方式A: 直接扫码 + wait-login；"
-                    "方式B: send-code --phone <手机号> + verify-code（手机验证码）"
-                ),
-            }, exit_code=1)
+            result["login_method"] = "both"
+            result["hint"] = (
+                "未登录，二维码已自动生成。"
+                "方式A: 直接扫码 + wait-login；"
+                "方式B: send-code --phone <手机号>"
+                " + verify-code（手机验证码）"
+            )
+        _output(result, exit_code=1)
     finally:
         # 只断开 CDP 连接，不关闭 tab——保留登录页面
         browser.close()
@@ -357,7 +359,7 @@ def cmd_login(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
-        png_bytes, already = fetch_qrcode(page)
+        png_bytes, _b64, already = fetch_qrcode(page)
         if already:
             _output({"logged_in": True, "message": "已登录"})
             return
@@ -366,7 +368,7 @@ def cmd_login(args: argparse.Namespace) -> None:
         _open_file_if_display(qrcode_path)
         print(
             json.dumps(
-                {"qrcode_path": qrcode_path, "message": "请扫码登录，二维码已保存到文件"},
+                {"qrcode_path": qrcode_path, "message": "请扫码登录"},
                 ensure_ascii=False,
             )
         )
@@ -457,11 +459,15 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
     调用方收到 qrcode_data_url 后直接内嵌到对话窗口显示；同时浏览器窗口（GUI 环境）
     也会显示二维码，用户可选择扫任意一个。
     """
-    from xhs.login import fetch_qrcode, save_qrcode_to_file
+    from xhs.login import (
+        fetch_qrcode,
+        make_qrcode_url,
+        save_qrcode_to_file,
+    )
 
     browser, page = _connect(args)
 
-    png_bytes, already = fetch_qrcode(page)
+    png_bytes, _b64_orig, already = fetch_qrcode(page)
     if already:
         browser.close_page(page)
         browser.close()
@@ -469,26 +475,26 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
         return
 
     qrcode_path = save_qrcode_to_file(png_bytes)
+    image_url, login_url = make_qrcode_url(png_bytes)
 
-    # 生成 data URL，AI 可直接内嵌到 markdown 图片
-    import base64 as _b64
-    qrcode_data_url = "data:image/png;base64," + _b64.b64encode(png_bytes).decode()
-
-    # CLI 终端有桌面时自动打开二维码图片
     _open_file_if_display(qrcode_path)
 
     # 记录 login tab，供 wait-login 精确 reconnect
     _save_login_tab(page.target_id, args.port)
-    # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
+    # 清除 session tab 引用——隔离登录表单，防止其他命令复用
     _clear_session_tab(args.port)
 
-    # 只断开 CDP 连接，不关闭 tab——QR 会话保持，用户可继续扫码
+    # 只断开 CDP 连接，不关闭 tab——QR 会话保持
     browser.close()
-    _output({
+    result: dict = {
         "qrcode_path": qrcode_path,
-        "qrcode_data_url": qrcode_data_url,
-        "message": "二维码已生成，请扫码登录。扫码后运行 wait-login 等待登录结果。",
-    })
+        "qrcode_image_url": image_url,
+        "message": "二维码已生成，请扫码登录。"
+        "扫码后运行 wait-login 等待登录结果。",
+    }
+    if login_url:
+        result["qr_login_url"] = login_url
+    _output(result)
 
 
 def cmd_wait_login(args: argparse.Namespace) -> None:
