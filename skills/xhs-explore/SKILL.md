@@ -12,7 +12,7 @@ metadata:
         - uv
     emoji: "\U0001F50D"
     os:
-      - macos
+      - darwin
       - linux
 ---
 
