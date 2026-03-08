@@ -28,10 +28,26 @@ from .selectors import (
     PHONE_INPUT,
     PHONE_LOGIN_SUBMIT,
     QRCODE_IMG,
+    USER_NICKNAME,
+    USER_PROFILE_NAV_LINK,
 )
 from .urls import EXPLORE_URL
 
 logger = logging.getLogger(__name__)
+
+
+def _wait_for_countdown(page: Page, timeout: float = 5.0) -> None:
+    """等待"获取验证码"按钮出现倒计时数字，确认验证码已发送。
+
+    轮询按钮文字直到包含数字（如 "60s"），超时则抛出 RateLimitError。
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        btn_text = page.get_element_text(GET_CODE_BUTTON) or ""
+        if any(ch.isdigit() for ch in btn_text):
+            return
+        time.sleep(0.3)
+    raise RateLimitError()
 
 
 def _wait_for_auth_ui(page: Page, timeout: float = 8.0) -> None:
@@ -45,6 +61,40 @@ def _wait_for_auth_ui(page: Page, timeout: float = 8.0) -> None:
         if page.has_element(LOGIN_STATUS) or page.has_element(LOGIN_CONTAINER):
             return
         time.sleep(0.2)
+
+
+def get_current_user_nickname(page: Page) -> str:
+    """获取当前登录用户的真实昵称，失败时返回空字符串（best-effort）。
+
+    流程：首页导航栏取个人主页 href → 导航过去 → 读 .user-name 文字。
+    """
+    try:
+        page.navigate(EXPLORE_URL)
+        page.wait_for_load()
+        _wait_for_auth_ui(page)
+        if not page.has_element(LOGIN_STATUS):
+            return ""
+
+        # 从导航栏"我"的链接取个人主页 URL（含 /user/profile/<user_id>）
+        profile_href = page.evaluate(
+            f"document.querySelector({json.dumps(USER_PROFILE_NAV_LINK)})?.getAttribute('href') || ''"
+        )
+        if not profile_href:
+            return ""
+
+        # 导航到个人主页读取真实昵称
+        profile_url = f"https://www.xiaohongshu.com{profile_href}"
+        page.navigate(profile_url)
+        page.wait_for_load()
+        page.wait_dom_stable()
+
+        nickname = page.evaluate(
+            f"document.querySelector({json.dumps(USER_NICKNAME)})?.innerText?.trim() || ''"
+        )
+        return nickname or ""
+    except Exception:
+        logger.warning("获取用户昵称失败")
+        return ""
 
 
 def check_login_status(page: Page) -> bool:
@@ -135,20 +185,26 @@ def send_phone_code(page: Page, phone: str) -> bool:
     """
     page.navigate(EXPLORE_URL)
     page.wait_for_load()
-    sleep_random(1500, 2500)
+
+    # 直接等待登录容器出现（合并了 _wait_for_auth_ui 的逻辑，避免重复等待）
+    try:
+        page.wait_for_element(LOGIN_CONTAINER, timeout=10.0)
+    except Exception as exc:
+        # 可能已登录（没有登录容器），检查登录状态
+        if page.has_element(LOGIN_STATUS):
+            return False
+        raise RuntimeError("找不到登录表单") from exc
 
     if page.has_element(LOGIN_STATUS):
         return False
 
-    # 等待登录弹窗出现
-    page.wait_for_element(LOGIN_CONTAINER, timeout=15.0)
-    sleep_random(500, 800)
+    sleep_random(200, 400)
 
     # 点击手机号输入框并逐字输入
     page.click_element(PHONE_INPUT)
     sleep_random(200, 400)
     page.type_text(phone, delay_ms=80)
-    sleep_random(500, 800)
+    sleep_random(200, 400)
 
     # 先勾选用户协议，再点获取验证码
     if not page.has_element(AGREE_CHECKBOX_CHECKED):
@@ -157,12 +213,9 @@ def send_phone_code(page: Page, phone: str) -> bool:
 
     # 点击"获取验证码"
     page.click_element(GET_CODE_BUTTON)
-    sleep_random(2000, 2500)
 
-    # 检测按钮是否变为倒计时（成功发送后按钮文字会包含数字秒数）
-    btn_text = page.get_element_text(GET_CODE_BUTTON) or ""
-    if not any(ch.isdigit() for ch in btn_text):
-        raise RateLimitError()
+    # 事件驱动：轮询按钮文字直到出现倒计时数字，替代固定 2-2.5s 等待
+    _wait_for_countdown(page)
 
     logger.info("验证码已发送至 %s", phone[:3] + "****" + phone[-4:])
     return True
@@ -178,15 +231,27 @@ def submit_phone_code(page: Page, code: str) -> bool:
     Returns:
         True 登录成功，False 失败（超时或验证码错误）。
     """
-    # 点击验证码输入框并逐字输入
+    # 点击验证码输入框，先清空再用 CDP 键盘事件逐字输入（isTrusted=true，React 能识别）
     page.click_element(CODE_INPUT)
-    sleep_random(300, 500)
-    page.type_text(code, delay_ms=100)
-    sleep_random(500, 800)
+    sleep_random(100, 200)
+    page.evaluate(
+        f"""(() => {{
+            const el = document.querySelector({json.dumps(CODE_INPUT)});
+            if (el && el.value) {{
+                const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                setter.call(el, '');
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            }}
+        }})()"""
+    )
+    page.type_text(code, delay_ms=0)
+    sleep_random(100, 200)
 
     # 点击登录按钮
     page.click_element(PHONE_LOGIN_SUBMIT)
-    sleep_random(1000, 2000)
+    sleep_random(500, 1000)
 
     # 检查是否有错误提示
     err = page.get_element_text(LOGIN_ERR_MSG)
