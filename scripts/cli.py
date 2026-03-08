@@ -81,6 +81,28 @@ def _output(data: dict, exit_code: int = 0) -> None:
     sys.exit(exit_code)
 
 
+def _open_file_if_display(path: str) -> None:
+    """有桌面环境时用系统默认程序打开文件，无界面环境静默跳过。"""
+    from chrome_launcher import has_display
+
+    if not has_display():
+        return
+
+    import platform
+    import subprocess
+
+    try:
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(path)
+        elif system == "Darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except Exception:
+        logger.debug("无法自动打开文件: %s", path)
+
+
 def _update_account_nickname(args: argparse.Namespace, page) -> None:
     """登录成功后，将平台昵称写入账号描述（best-effort，失败不影响登录结果）。"""
     if not getattr(args, "account", ""):
@@ -229,43 +251,103 @@ def _headless_fallback(port: int) -> None:
             exit_code=1,
         )
 
+def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
+    """频率限制时刷新页面返回二维码，让 AI 直接展示给用户扫码。"""
+    from xhs.login import fetch_qrcode, save_qrcode_to_file
+    from xhs.urls import EXPLORE_URL
+
+    # 刷新页面使登录弹窗回到默认的二维码 tab
+    page.navigate(EXPLORE_URL)
+    page.wait_for_load()
+
+    png_bytes, already = fetch_qrcode(page)
+    if already:
+        browser.close()
+        _output({"logged_in": True, "message": "已登录"})
+        return
+
+    qrcode_path = save_qrcode_to_file(png_bytes)
+
+    import base64 as _b64
+    qrcode_data_url = (
+        "data:image/png;base64,"
+        + _b64.b64encode(png_bytes).decode()
+    )
+
+    _open_file_if_display(qrcode_path)
+
+    _save_login_tab(page.target_id, args.port)
+    _clear_session_tab(args.port)
+    browser.close()
+    _output({
+        "logged_in": False,
+        "login_method": "qrcode",
+        "qrcode_path": qrcode_path,
+        "qrcode_data_url": qrcode_data_url,
+        "message": (
+            "验证码发送受限，已切换为二维码登录，请扫码。"
+            "扫码后运行 wait-login 等待登录结果。"
+        ),
+    }, exit_code=1)
+
 
 # ========== 子命令实现 ==========
 
 
 def cmd_check_login(args: argparse.Namespace) -> None:
-    """检查登录状态。"""
-    from xhs.login import check_login_status
+    """检查登录状态。未登录时自动获取二维码，省去单独调 get-qrcode 的一轮通信。"""
+    from xhs.login import check_login_status, fetch_qrcode, save_qrcode_to_file
 
     browser, page = _connect(args)
     try:
         logged_in = check_login_status(page)
         if logged_in:
             _output({"logged_in": True}, exit_code=0)
-        else:
-            import platform
-            from chrome_launcher import has_display
-            system = platform.system()
+            return
 
-            if has_display():
-                # 所有有界面环境（macOS/Windows/Linux 桌面）：二维码显示在对话窗口
-                _output({
-                    "logged_in": False,
-                    "login_method": "qrcode",
-                    "hint": "请运行 get-qrcode 获取二维码，扫码后运行 wait-login 等待登录结果",
-                }, exit_code=1)
-            else:
-                # 无界面服务器：二维码或手机验证码均可
-                _output({
-                    "logged_in": False,
-                    "login_method": "both",
-                    "hint": (
-                        "方式A: get-qrcode + wait-login（二维码显示在对话窗口）；"
-                        "方式B: send-code --phone <手机号> + verify-code（手机验证码）"
-                    ),
-                }, exit_code=1)
+        # 未登录——当前页面已在登录弹窗，复用页面直接获取二维码
+        png_bytes, already = fetch_qrcode(page)
+        if already:
+            _output({"logged_in": True}, exit_code=0)
+            return
+
+        qrcode_path = save_qrcode_to_file(png_bytes)
+
+        # 生成 data URL，AI 可直接内嵌到 markdown 图片
+        import base64 as _b64
+        qrcode_data_url = "data:image/png;base64," + _b64.b64encode(png_bytes).decode()
+
+        # 记录 login tab + 清除 session tab（与 cmd_get_qrcode 一致）
+        _save_login_tab(page.target_id, args.port)
+        _clear_session_tab(args.port)
+
+        # CLI 终端有桌面时自动打开二维码图片
+        _open_file_if_display(qrcode_path)
+
+        from chrome_launcher import has_display
+
+        if has_display():
+            _output({
+                "logged_in": False,
+                "login_method": "qrcode",
+                "qrcode_path": qrcode_path,
+                "qrcode_data_url": qrcode_data_url,
+                "hint": "未登录，二维码已自动生成。扫码后运行 wait-login 等待登录结果",
+            }, exit_code=1)
+        else:
+            _output({
+                "logged_in": False,
+                "login_method": "both",
+                "qrcode_path": qrcode_path,
+                "qrcode_data_url": qrcode_data_url,
+                "hint": (
+                    "未登录，二维码已自动生成。"
+                    "方式A: 直接扫码 + wait-login；"
+                    "方式B: send-code --phone <手机号> + verify-code（手机验证码）"
+                ),
+            }, exit_code=1)
     finally:
-        # 不关闭 tab，保留页面供下次命令复用（_SESSION_TAB_FILE）
+        # 只断开 CDP 连接，不关闭 tab——保留登录页面
         browser.close()
 
 
@@ -281,6 +363,7 @@ def cmd_login(args: argparse.Namespace) -> None:
             return
 
         qrcode_path = save_qrcode_to_file(png_bytes)
+        _open_file_if_display(qrcode_path)
         print(
             json.dumps(
                 {"qrcode_path": qrcode_path, "message": "请扫码登录，二维码已保存到文件"},
@@ -364,6 +447,13 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
 
     qrcode_path = save_qrcode_to_file(png_bytes)
 
+    # 生成 data URL，AI 可直接内嵌到 markdown 图片
+    import base64 as _b64
+    qrcode_data_url = "data:image/png;base64," + _b64.b64encode(png_bytes).decode()
+
+    # CLI 终端有桌面时自动打开二维码图片
+    _open_file_if_display(qrcode_path)
+
     # 记录 login tab，供 wait-login 精确 reconnect
     _save_login_tab(page.target_id, args.port)
     # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
@@ -373,7 +463,8 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
     browser.close()
     _output({
         "qrcode_path": qrcode_path,
-        "message": "二维码已生成，请扫码登录。扫码后运行 check-login 确认登录状态。",
+        "qrcode_data_url": qrcode_data_url,
+        "message": "二维码已生成，请扫码登录。扫码后运行 wait-login 等待登录结果。",
     })
 
 
@@ -402,38 +493,38 @@ def cmd_wait_login(args: argparse.Namespace) -> None:
 
 
 def cmd_send_code(args: argparse.Namespace) -> None:
-    """分步登录第一步：填写手机号并发送验证码，保持页面不关闭。"""
-    from chrome_launcher import has_display, restart_chrome
+    """分步登录第一步：填写手机号并发送验证码，保持页面不关闭。
+
+    频率限制时返回错误信息和建议，由 AI 告知用户选择。
+    """
     from xhs.errors import RateLimitError
     from xhs.login import send_phone_code
 
-    for attempt in range(2):
-        browser, page = _connect(args)
-        try:
-            sent = send_phone_code(page, args.phone)
-            if not sent:
-                _output({"logged_in": True, "message": "已登录，无需重新登录"})
-                return
-
-            # 记录 login tab，供 verify-code 精确 reconnect
-            _save_login_tab(page.target_id, args.port)
-            # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
-            _clear_session_tab(args.port)
-            _output({
-                "status": "code_sent",
-                "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，请运行 verify-code --code <验证码>",
-            })
-        except RateLimitError:
-            browser.close()
-            if attempt == 0:
-                logger.info("请求频率限制，重启 Chrome 后重试...")
-                restart_chrome(port=args.port, headless=not has_display())
-                continue
-            _output({"success": False, "error": "请求太频繁，重启后仍失败，请稍后再试"}, exit_code=2)
-        else:
-            # 只断开控制连接，不关闭页面——tab 保持打开，verify-code 继续复用
-            browser.close()
+    browser, page = _connect(args)
+    try:
+        sent = send_phone_code(page, args.phone)
+        if not sent:
+            _output({"logged_in": True, "message": "已登录，无需重新登录"})
             return
+
+        # 记录 login tab，供 verify-code 精确 reconnect
+        _save_login_tab(page.target_id, args.port)
+        # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
+        _clear_session_tab(args.port)
+        _output({
+            "status": "code_sent",
+            "message": (
+                f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，"
+                "请运行 verify-code --code <验证码>"
+            ),
+        })
+    except RateLimitError:
+        # 频率限制——直接切换二维码登录
+        logger.info("验证码发送受限，切换为二维码登录")
+        _qrcode_fallback(browser, page, args)
+    else:
+        # 只断开控制连接，不关闭页面——tab 保持打开，verify-code 继续复用
+        browser.close()
 
 
 def cmd_verify_code(args: argparse.Namespace) -> None:

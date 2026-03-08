@@ -118,15 +118,18 @@ def fetch_qrcode(page: Page) -> tuple[bytes, bool]:
         - 如果已登录，返回 (b"", True)
         - 如果未登录，返回 (png_bytes, False)
     """
-    page.navigate(EXPLORE_URL)
-    page.wait_for_load()
-    _wait_for_auth_ui(page)
+    # 如果当前页面已在 explore（如 check-login 刚导航过），跳过重复导航
+    current_url = page.evaluate("location.href") or ""
+    if "explore" not in current_url:
+        page.navigate(EXPLORE_URL)
+        page.wait_for_load()
 
+    # 快速检查是否已登录，避免无谓等待二维码
     if page.has_element(LOGIN_STATUS):
         return b"", True
 
-    # 等待 img.qrcode-img 出现，用浏览器 Canvas 加白边后导出 PNG base64
-    page.wait_for_element(QRCODE_IMG, timeout=10.0)
+    # 直接等待二维码元素出现，合并了 _wait_for_auth_ui 的逻辑
+    page.wait_for_element(QRCODE_IMG, timeout=15.0)
     b64 = page.evaluate(
         f"""
         (() => {{
@@ -307,5 +310,5 @@ def wait_for_login(page: Page, timeout: float = 120.0) -> bool:
         if page.has_element(LOGIN_STATUS):
             logger.info("登录成功")
             return True
-        time.sleep(0.5)
+        time.sleep(0.3)
     return False

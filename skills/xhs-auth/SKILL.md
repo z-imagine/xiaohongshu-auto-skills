@@ -89,24 +89,16 @@ python scripts/cli.py check-login
 
 输出解读：
 - `"logged_in": true` → 已登录，可执行后续操作。
-- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，走方式 A（二维码）。
-- `"logged_in": false` + `"login_method": "both"` → 无界面服务器，**询问用户选方式 A（二维码）或方式 B（手机验证码）**。
+- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，走方式 A（二维码）。输出自动包含 `qrcode_data_url` 和 `qrcode_path`。
+- `"logged_in": false` + `"login_method": "both"` → 无界面服务器，输出自动包含二维码，**询问用户选方式 A（二维码）或方式 B（手机验证码）**。
 
 ### 第二步：根据输出选择登录方式
 
 #### 方式 A：二维码登录（所有平台通用）
 
-**第一步** — 获取二维码（非阻塞，立即返回）：
+> `check-login` 未登录时会自动返回二维码（`qrcode_data_url` + `qrcode_path`），无需单独调 `get-qrcode`。
 
-```bash
-python scripts/cli.py get-qrcode
-```
-
-- Chrome 正常启动，从登录弹窗 `img` 元素读取二维码（相当于右键另存为）。
-- 命令立即退出，Chrome tab 保持打开（QR 会话继续有效）。
-- 输出：`{"qrcode_path": "...", "qrcode_data_url": "data:image/png;base64,...", "message": "..."}`
-
-**第二步** — 从 JSON 取 `qrcode_data_url`，在回复中直接写出：
+**第一步** — 从 `check-login` 返回的 JSON 取 `qrcode_data_url`，在回复中直接写出：
 
 ```
 ![小红书登录二维码]({qrcode_data_url})
@@ -114,14 +106,16 @@ python scripts/cli.py get-qrcode
 
 图片内嵌在对话窗口，用户用小红书 App 扫对话里的二维码。
 
-**第三步** — 等待登录完成（**单次调用，无需轮询**）：
+**第二步** — 等待登录完成（**单次调用，无需轮询**）：
 
 ```bash
 python scripts/cli.py wait-login
 ```
 
 - 连接已有 Chrome tab，内部阻塞等待（最多 120 秒）。
-- 输出 `{"logged_in": true}` 则完成；超时则提示用户重新运行 `get-qrcode`。
+- 输出 `{"logged_in": true}` 则完成；超时则提示用户重新运行 `get-qrcode` 刷新二维码。
+
+> **二维码过期刷新**：如需单独刷新二维码（如超时后），可运行 `get-qrcode`，它仍作为独立命令保留。
 
 #### 方式 B：手机验证码登录（无界面服务器，分两步）
 
@@ -140,7 +134,8 @@ python scripts/cli.py send-code --phone <用户确认的手机号>
 ```
 - 自动填写手机号、勾选用户协议、点击"获取验证码"。
 - Chrome 页面保持打开，等待下一步。
-- 输出：`{"status": "code_sent", "message": "验证码已发送至 138****0000，请运行 verify-code --code <验证码>"}`
+- 正常输出：`{"status": "code_sent", "message": "..."}`
+- **频率限制**：自动切换为二维码登录，输出含 `qrcode_data_url`。告知用户"验证码发送受限，已切换为二维码登录"，展示二维码，然后运行 `wait-login`。
 
 **第二步** — 向用户询问验证码，然后提交登录：
 
