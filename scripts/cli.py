@@ -384,11 +384,19 @@ def cmd_login(args: argparse.Namespace) -> None:
 
 def cmd_phone_login(args: argparse.Namespace) -> None:
     """手机号+验证码登录（适用于无界面服务器）。"""
+    from xhs.errors import RateLimitError
     from xhs.login import send_phone_code, submit_phone_code
 
     browser, page = _connect(args)
     try:
         sent = send_phone_code(page, args.phone)
+    except RateLimitError:
+        # 频率限制——直接切换二维码登录
+        logger.info("验证码发送受限，切换为二维码登录")
+        _qrcode_fallback(browser, page, args)
+        return
+
+    try:
         if not sent:
             _output({"logged_in": True, "message": "已登录，无需重新登录"})
             return
@@ -396,7 +404,13 @@ def cmd_phone_login(args: argparse.Namespace) -> None:
         # 输出提示，等待用户在终端输入验证码
         print(
             json.dumps(
-                {"status": "code_sent", "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}"},
+                {
+                    "status": "code_sent",
+                    "message": (
+                        f"验证码已发送至 "
+                        f"{args.phone[:3]}****{args.phone[-4:]}"
+                    ),
+                },
                 ensure_ascii=False,
             ),
             flush=True,
@@ -409,16 +423,25 @@ def cmd_phone_login(args: argparse.Namespace) -> None:
             try:
                 code = input("请输入验证码: ").strip()
             except EOFError:
-                _output({"success": False, "error": "未收到验证码输入"}, exit_code=2)
+                _output(
+                    {"success": False, "error": "未收到验证码输入"},
+                    exit_code=2,
+                )
                 return
 
         if not code:
-            _output({"success": False, "error": "验证码不能为空"}, exit_code=2)
+            _output(
+                {"success": False, "error": "验证码不能为空"},
+                exit_code=2,
+            )
             return
 
         success = submit_phone_code(page, code)
         _output(
-            {"logged_in": success, "message": "登录成功" if success else "验证码错误或超时"},
+            {
+                "logged_in": success,
+                "message": "登录成功" if success else "验证码错误或超时",
+            },
             exit_code=0 if success else 2,
         )
     finally:
