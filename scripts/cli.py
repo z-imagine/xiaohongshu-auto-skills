@@ -364,8 +364,10 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
 
     qrcode_path = save_qrcode_to_file(png_bytes)
 
-    # 记录 tab，供 wait-login 精确reconnect
+    # 记录 login tab，供 wait-login 精确 reconnect
     _save_login_tab(page.target_id, args.port)
+    # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
+    _clear_session_tab(args.port)
 
     # 只断开 CDP 连接，不关闭 tab——QR 会话保持，用户可继续扫码
     browser.close()
@@ -413,8 +415,10 @@ def cmd_send_code(args: argparse.Namespace) -> None:
                 _output({"logged_in": True, "message": "已登录，无需重新登录"})
                 return
 
-            # 记录 tab，供 verify-code 精确 reconnect
+            # 记录 login tab，供 verify-code 精确 reconnect
             _save_login_tab(page.target_id, args.port)
+            # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
+            _clear_session_tab(args.port)
             _output({
                 "status": "code_sent",
                 "message": f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，请运行 verify-code --code <验证码>",
