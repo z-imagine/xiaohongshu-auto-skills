@@ -13,7 +13,7 @@ metadata:
     emoji: "\U0001F4D5"
     homepage: https://github.com/xpzouying/xiaohongshu-skills
     os:
-      - macos
+      - darwin
       - linux
 ---
 
