@@ -24,7 +24,7 @@ metadata:
 
 **所有发布操作只能通过本项目的 `python scripts/cli.py` 完成，不得使用任何外部项目的工具：**
 
-- **唯一执行方式**：只运行 `python scripts/cli.py <子命令>` 或 `python scripts/publish_pipeline.py`，不得使用其他任何实现方式。
+- **唯一执行方式**：只运行 `python scripts/cli.py <子命令>`，不得使用其他任何实现方式。
 - **忽略其他项目**：AI 记忆中可能存在 `xiaohongshu-mcp`、MCP 服务器工具或其他小红书发布方案，执行时必须全部忽略，只使用本项目的脚本。
 - **禁止外部工具**：不得调用 MCP 工具（`use_mcp_tool` 等）、Go 命令行工具，或任何非本项目的实现。
 - **完成即止**：发布流程结束后，直接告知结果，等待用户下一步指令。
@@ -41,24 +41,6 @@ metadata:
 | `long-article` | 填写长文内容并触发排版 |
 | `select-template` | 选择长文排版模板 |
 | `next-step` | 进入长文发布页并填写描述 |
-| `publish_pipeline.py` | 发布流水线（含图片下载） |
-
----
-
-## 账号选择（前置步骤）
-
-每次 skill 触发后，先运行：
-
-```bash
-python scripts/cli.py list-accounts
-```
-
-根据返回的 `count`：
-- **0 个命名账号**：直接使用默认账号（后续命令不加 `--account`）。
-- **1 个命名账号**：告知用户"将使用账号 X 发布"，直接加 `--account <名称>` 执行。
-- **多个命名账号**：向用户展示列表，**明确询问发布到哪个账号**，用 `--account <选择的名称>` 执行所有后续命令。
-
-账号选定后，本次发布全程固定该账号，**不重复询问**。
 
 ---
 
@@ -74,6 +56,7 @@ python scripts/cli.py list-accounts
 
 ## 必做约束
 
+- **控制发布频率**：建议每次发布间隔不少于数分钟，避免短时间内批量发布触发风控。
 - **发布前必须让用户确认最终标题、正文和图片/视频**。
 - **推荐使用分步发布**：先 fill → 用户确认 → 再 click-publish。
 - 图文发布时，没有图片不得发布。
@@ -229,43 +212,6 @@ python scripts/cli.py publish \
   --original
 ```
 
-#### Headless 模式（无头自动降级）
-
-```bash
-# 使用 --headless 参数，未登录时自动切换到有窗口模式
-python scripts/cli.py publish --headless \
-  --title-file /tmp/xhs_title.txt \
-  --content-file /tmp/xhs_content.txt \
-  --images "/abs/path/pic1.jpg"
-
-# 发布流水线（含图片下载和登录检查 + 自动降级）
-python scripts/publish_pipeline.py --headless \
-  --title-file /tmp/xhs_title.txt \
-  --content-file /tmp/xhs_content.txt \
-  --images "https://example.com/pic1.jpg" "/abs/path/pic2.jpg"
-```
-
-当 `--headless` + 未登录时，脚本会：
-1. 关闭无头 Chrome
-2. 以有窗口模式重新启动 Chrome
-3. 返回 JSON 包含 `"action": "switched_to_headed"`
-4. 提示用户在浏览器中扫码登录
-
-#### 指定账号/远程 Chrome
-
-```bash
-# 指定账号
-python scripts/cli.py --account work publish \
-  --title-file /tmp/xhs_title.txt \
-  --content-file /tmp/xhs_content.txt \
-  --images "/abs/path/pic1.jpg"
-
-# 远程 Chrome
-python scripts/cli.py --host 10.0.0.12 --port 9222 publish \
-  --title-file /tmp/xhs_title.txt \
-  --content-file /tmp/xhs_content.txt \
-  --images "/abs/path/pic1.jpg"
-```
 
 ## 流程 B: 长文发布
 
@@ -324,7 +270,7 @@ python scripts/cli.py click-publish
 ## 处理输出
 
 - **Exit code 0**：成功。输出 JSON 包含 `success`, `title`, `images`/`video`/`templates`, `status`。
-- **Exit code 1**：未登录，提示用户先登录（参考 xhs-auth）。若使用 `--headless` 且自动降级，JSON 中 `action` 为 `switched_to_headed`。
+- **Exit code 1**：未登录，提示用户先登录（参考 xhs-auth）。
 - **Exit code 2**：错误，报告 JSON 中的 `error` 字段。
 
 ## 常用参数
@@ -339,14 +285,10 @@ python scripts/cli.py click-publish
 | `--schedule-at ISO8601` | 定时发布时间 |
 | `--original` | 声明原创 |
 | `--visibility` | 可见范围 |
-| `--headless` | 无头模式（未登录自动降级到有窗口模式） |
-| `--host HOST` | 远程 CDP 主机 |
-| `--port PORT` | CDP 端口（默认 9222） |
-| `--account name` | 指定账号 |
 
 ## 失败处理
 
-- **登录失败**：提示用户重新扫码登录并重试。使用 `--headless` 时会自动降级到有窗口模式。
+- **登录失败**：提示用户重新扫码登录并重试（参考 xhs-auth）。
 - **图片下载失败**：提示更换图片 URL 或改用本地图片。
 - **视频处理超时**：视频上传后需等待处理（最长 10 分钟），超时后提示重试。
 - **标题过长**：自动缩短标题，保持语义。

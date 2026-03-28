@@ -110,13 +110,31 @@ def fill_publish_form(page: Page, content: PublishImageContent) -> None:
 def click_publish_button(page: Page) -> None:
     """点击发布按钮。
 
-    Args:
-        page: CDP 页面对象。
+    用文本内容精确匹配，避免点到旁边的"发布笔记"下拉按钮。
 
     Raises:
         PublishError: 点击失败。
     """
-    page.click_element(PUBLISH_BUTTON)
+    clicked = page.evaluate(
+        """
+        (() => {
+            // 找文本内容精确为"发布"的 bg-red 按钮（排除"发布笔记"等）
+            const btns = document.querySelectorAll('button.bg-red');
+            for (const btn of btns) {
+                const span = btn.querySelector('span');
+                const text = (span ? span.textContent : btn.textContent).trim();
+                if (text === '发布') {
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
+        })()
+        """
+    )
+    if not clicked:
+        raise PublishError("未找到发布按钮")
     time.sleep(3)
     logger.info("发布完成")
 
@@ -428,23 +446,59 @@ def _input_tags(page: Page, content_selector: str, tags: list[str]) -> None:
     """输入标签。"""
     time.sleep(1)
 
-    # 先点击正文编辑器，确保焦点在正文而非标题
-    page.click_element(content_selector)
-    time.sleep(0.3)
+    # 先记录当前段落数（insertParagraph 之前），之后用于精确定位正文最后一段
+    # 注意：必须在 insertParagraph 之前记录，否则 para_count_before 会包含新增的 tags 行
+    para_count_before = int(page.evaluate(
+        f'document.querySelector("{content_selector}").querySelectorAll("p").length'
+    ) or 1)
 
-    # 移动光标到正文末尾（20次 ArrowDown）
-    for _ in range(20):
-        page.press_key("ArrowDown")
-        time.sleep(0.01)
-
-    # 按两次回车换行
-    page.press_key("Enter")
-    page.press_key("Enter")
-    time.sleep(1)
+    # 用 evaluate 直接 focus 编辑器、光标移到末尾并换行一次
+    # 避免 click_element 因 isTrusted=false 无法真正 focus Quill 编辑器的问题
+    page.evaluate(
+        f"""
+        (() => {{
+            const el = document.querySelector("{content_selector}");
+            if (!el) return;
+            el.focus();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand("insertParagraph", false, null);
+        }})()
+        """
+    )
+    time.sleep(0.5)
 
     for tag in tags:
         tag = tag.lstrip("#")
         _input_single_tag(page, content_selector, tag)
+
+    # 输入完所有 tags 后，回到正文最后一段（tags 输入前的最后一段）末尾，按下回车
+    # 用 para_count_before 精确定位，避免 tags 输入后 Quill 自动新增空段导致偏移
+    page.evaluate(
+        f"""
+        (() => {{
+            const el = document.querySelector("{content_selector}");
+            if (!el) return;
+            const paras = el.querySelectorAll("p");
+            // tags 输入前最后一段的索引 = para_count_before - 1
+            const lastContent = paras[{para_count_before} - 1];
+            if (!lastContent) return;
+            el.focus();
+            const range = document.createRange();
+            range.selectNodeContents(lastContent);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand("insertParagraph", false, null);
+        }})()
+        """
+    )
+    time.sleep(0.3)
 
 
 def _input_single_tag(page: Page, content_selector: str, tag: str) -> None:

@@ -1,6 +1,6 @@
 # xiaohongshu-skills
 
-小红书自动化 Claude Code Skills，基于 Python CDP 浏览器自动化引擎。
+小红书自动化 Claude Code Skills，使用用户的真实浏览器和账号信息操作小红书。
 
 ## Git 工作流
 
@@ -18,11 +18,12 @@ uv run pytest              # 运行测试
 
 ## 架构
 
-双层结构：`scripts/` 是 Python CDP 自动化引擎，`skills/` 是 Claude Code Skills 定义（SKILL.md 格式）。
+双层结构：`scripts/` 是 Python 自动化引擎，`skills/` 是 Claude Code Skills 定义（SKILL.md 格式）。
 
 - `scripts/xhs/` — 核心自动化库（模块化，每个功能一个文件）
-- `scripts/cli.py` — 统一 CLI 入口，23 个子命令，JSON 结构化输出
-- `scripts/publish_pipeline.py` — 发布编排器（含图片下载和登录检查）
+- `scripts/cli.py` — 统一 CLI 入口，JSON 结构化输出，自动启动 bridge server 和浏览器
+- `scripts/bridge_server.py` — 本地通信服务（连接 CLI 与浏览器扩展）
+- `extension/` — Chrome 扩展，在用户的真实浏览器中执行操作
 - `skills/*/SKILL.md` — 指导 Claude 如何调用 scripts/
 
 ### 调用方式
@@ -31,8 +32,9 @@ uv run pytest              # 运行测试
 python scripts/cli.py check-login
 python scripts/cli.py search-feeds --keyword "关键词"
 python scripts/cli.py publish --title-file t.txt --content-file c.txt --images pic.jpg
-python scripts/publish_pipeline.py --title-file t.txt --content-file c.txt --images URL1
 ```
+
+> CLI 会自动检测环境，若浏览器未打开也会自动启动 Chrome。
 
 ## 代码规范
 
@@ -48,7 +50,6 @@ python scripts/publish_pipeline.py --title-file t.txt --content-file c.txt --ima
 - 发布类操作必须有用户确认机制
 - 文件路径必须使用绝对路径
 - 敏感内容通过文件传递，不内联到命令行参数
-- Chrome Profile 目录隔离账号 cookies
 
 ## CLI 子命令对照表
 
@@ -74,7 +75,3 @@ python scripts/publish_pipeline.py --title-file t.txt --content-file c.txt --ima
 | `long-article` | — | 长文发布（填写+排版） |
 | `select-template` | — | 长文发布（选择模板） |
 | `next-step` | — | 长文发布（下一步+描述） |
-| `add-account` | — | 账号管理（添加，自动分配端口） |
-| `list-accounts` | — | 账号管理（列出所有） |
-| `remove-account` | — | 账号管理（删除） |
-| `set-default-account` | — | 账号管理（设置默认） |

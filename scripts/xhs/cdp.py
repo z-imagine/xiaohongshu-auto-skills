@@ -15,7 +15,6 @@ import requests
 import websockets.sync.client as ws_client
 
 from .errors import CDPError, ElementNotFoundError
-from .stealth import STEALTH_JS, build_ua_override
 
 logger = logging.getLogger(__name__)
 
@@ -468,13 +467,6 @@ class Page:
             {"type": "keyUp", **info},
         )
 
-    def inject_stealth(self) -> None:
-        """注入反检测脚本。"""
-        self._send_session(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {"source": STEALTH_JS},
-        )
-
     def remove_element(self, selector: str) -> None:
         """移除 DOM 元素。"""
         self.evaluate(
@@ -589,30 +581,7 @@ class Browser:
         self._cdp = CDPClient(ws_url)
 
     def _setup_page(self, page: Page) -> Page:
-        """为 Page 对象注入 stealth、UA、viewport，并启用必要的 CDP domain。"""
-        import contextlib
-
-        page.inject_stealth()
-        page._send_session(
-            "Emulation.setUserAgentOverride",
-            build_ua_override(self._chrome_version),
-        )
-        page._send_session(
-            "Emulation.setDeviceMetricsOverride",
-            {
-                "width": random.randint(1366, 1920),
-                "height": random.randint(768, 1080),
-                "deviceScaleFactor": 1,
-                "mobile": False,
-            },
-        )
-        for perm in ("geolocation", "notifications", "midi", "camera", "microphone"):
-            with contextlib.suppress(CDPError):
-                assert self._cdp is not None
-                self._cdp.send(
-                    "Browser.setPermission",
-                    {"permission": {"name": perm}, "setting": "denied"},
-                )
+        """为 Page 对象启用必要的 CDP domain。"""
         page._send_session("Page.enable")
         page._send_session("DOM.enable")
         page._send_session("Runtime.enable")
@@ -686,7 +655,6 @@ class Browser:
         page._send_session("Page.enable")
         page._send_session("DOM.enable")
         page._send_session("Runtime.enable")
-        page.inject_stealth()
         return page
 
     def get_existing_page(self) -> Page | None:
@@ -710,7 +678,6 @@ class Browser:
                 page._send_session("Page.enable")
                 page._send_session("DOM.enable")
                 page._send_session("Runtime.enable")
-                page.inject_stealth()
                 return page
         return None
 
