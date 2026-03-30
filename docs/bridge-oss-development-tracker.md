@@ -173,14 +173,14 @@ xiaohongshu-auto-skills/
 
 | ID | 优先级 | 任务 | 说明 | 依赖 | 产出 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| P4-01 | P0 | session 生命周期管理 | 在线、离线、重连、过期状态管理 | P1-04 | session 管理能力 | todo |
-| P4-02 | P0 | bridge 心跳与断线重连 | 增加心跳和掉线恢复策略 | P1-04, P1-09 | 连接稳定性增强 | todo |
-| P4-03 | P0 | 命令审计日志 | 记录 session、method、结果、耗时 | P1-05 | 审计日志 | todo |
-| P4-04 | P1 | 错误码规范化 | 统一 bridge、extension、CLI 错误语义 | P1-15, P2-08 | 错误码文档 | todo |
-| P4-05 | P1 | OSS 对象生命周期治理 | 桶级 TTL、异步清理、补偿机制 | P2-09 | 生命周期策略 | todo |
-| P4-06 | P1 | 多 session 并发测试 | 多用户同时搜索、互动、发布验证 | P4-01, P4-02, P3-06 | 压测与并发测试报告 | todo |
-| P4-07 | P1 | 安全测试 | 错 token、错 session、过期 URL 等场景验证 | P4-04, P4-05 | 安全测试记录 | todo |
-| P4-08 | P2 | 运维文档编写 | bridge 部署、extension 配置、排障说明 | P4-03 | 运维手册 | todo |
+| P4-01 | P0 | session 生命周期管理 | 在线、离线、重连、过期状态管理 | P1-04 | session 管理能力 | done |
+| P4-02 | P0 | bridge 心跳与断线重连 | 增加心跳和掉线恢复策略 | P1-04, P1-09 | 连接稳定性增强 | done |
+| P4-03 | P0 | 命令审计日志 | 记录 session、method、结果、耗时 | P1-05 | 审计日志 | done |
+| P4-04 | P1 | 错误码规范化 | 统一 bridge、extension、CLI 错误语义 | P1-15, P2-08 | 错误码文档 | done |
+| P4-05 | P1 | OSS 对象生命周期治理 | 桶级 TTL、异步清理、补偿机制 | P2-09 | 生命周期策略 | blocked |
+| P4-06 | P1 | 多 session 并发测试 | 多用户同时搜索、互动、发布验证 | P4-01, P4-02, P3-06 | 压测与并发测试报告 | blocked |
+| P4-07 | P1 | 安全测试 | 错 token、错 session、过期 URL 等场景验证 | P4-04, P4-05 | 安全测试记录 | blocked |
+| P4-08 | P2 | 运维文档编写 | bridge 部署、extension 配置、排障说明 | P4-03 | 运维手册 | done |
 
 ### 阶段验收
 

@@ -46,15 +46,12 @@ def test_ping_server_uses_session_scope() -> None:
         cli_ws = FakeSocket()
         router._sessions.register_extension("session-a", FakeSocket(), "1.0.0")
         await router._handle_cli(cli_ws, {"method": "ping_server", "session_id": "session-a"})
-        assert cli_ws.sent_messages == [
-            {
-                "result": {
-                    "server_running": True,
-                    "session_id": "session-a",
-                    "extension_connected": True,
-                }
-            }
-        ]
+        result = cli_ws.sent_messages[0]["result"]
+        assert result["server_running"] is True
+        assert result["session_id"] == "session-a"
+        assert result["extension_connected"] is True
+        assert result["session"]["connected"] is True
+        assert result["active_sessions"] == 1
 
     asyncio.run(scenario())
 
@@ -64,7 +61,7 @@ def test_cli_request_requires_session_id() -> None:
         router = BridgeRouter(token="")
         cli_ws = FakeSocket()
         await router._handle_cli(cli_ws, {"method": "navigate"})
-        assert cli_ws.sent_messages == [{"error": "CLI 请求缺少 session_id"}]
+        assert cli_ws.sent_messages == [{"error": "CLI 请求缺少 session_id", "error_code": "MISSING_SESSION_ID"}]
 
     asyncio.run(scenario())
 
@@ -89,5 +86,46 @@ def test_cli_request_routes_to_matching_extension() -> None:
         assert cli_ws.sent_messages[0]["result"]["ok"] is True
         assert cli_ws.sent_messages[0]["result"]["method"] == "navigate"
         assert cli_ws.sent_messages[0]["result"]["session_id"] == "session-a"
+
+    asyncio.run(scenario())
+
+
+def test_heartbeat_updates_session_state() -> None:
+    router = BridgeRouter(token="")
+    router._sessions.register_extension("session-a", FakeSocket(), "1.0.0")
+    router._sessions.touch_session("session-a", heartbeat=True)
+
+    snapshot = router.get_session_snapshot("session-a")
+    assert snapshot["last_heartbeat_at"] is not None
+
+
+def test_get_session_state_returns_structured_snapshot() -> None:
+    async def scenario() -> None:
+        router = BridgeRouter(token="")
+        cli_ws = FakeSocket()
+        router._sessions.register_extension("session-a", FakeSocket(), "1.0.0")
+        router._sessions.mark_command("session-a", "navigate")
+        await router._handle_cli(cli_ws, {"method": "get_session_state", "session_id": "session-a"})
+
+        result = cli_ws.sent_messages[0]["result"]
+        assert result["session_id"] == "session-a"
+        assert result["connected"] is True
+        assert result["last_method"] == "navigate"
+        assert result["connect_count"] == 1
+
+    asyncio.run(scenario())
+
+
+def test_router_rejects_invalid_token() -> None:
+    async def scenario() -> None:
+        router = BridgeRouter(token="secret")
+        cli_ws = FakeSocket()
+        await router._send_error(cli_ws, router_error("AUTH_FAILED", "Bridge 鉴权失败"))
+        assert cli_ws.sent_messages == [{"error": "Bridge 鉴权失败", "error_code": "AUTH_FAILED"}]
+
+    def router_error(code: str, message: str):
+        from bridge.types import BridgeError
+
+        return BridgeError(code, message)
 
     asyncio.run(scenario())

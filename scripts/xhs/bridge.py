@@ -49,6 +49,9 @@ class BridgePage:
 
         resp = json.loads(raw)
         if "error" in resp and resp["error"]:
+            error_code = resp.get("error_code")
+            if error_code:
+                raise CDPError(f"Bridge 错误[{error_code}]: {resp['error']}")
             raise CDPError(f"Bridge 错误: {resp['error']}")
         return resp.get("result")
 
@@ -229,6 +232,10 @@ class BridgePage:
             return bool(resp.get("result", {}).get("extension_connected"))
         except Exception:
             return False
+
+    def get_session_state(self) -> dict[str, Any]:
+        """Fetch detailed bridge session state for diagnostics."""
+        return self._call("get_session_state")
 
     @property
     def target_id(self) -> str:
