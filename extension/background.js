@@ -10,8 +10,8 @@
  */
 
 const DEFAULT_SETTINGS = {
-  bridgeUrl: "ws://localhost:9333",
-  sessionId: "default",
+  bridgeUrl: "",
+  sessionId: "",
   bridgeToken: "",
 };
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -53,8 +53,8 @@ function closeSocket() {
 
 async function maybeConnect() {
   await loadSettings();
-  if (!settings.bridgeUrl || !settings.sessionId) {
-    console.warn("[XHS Bridge] bridgeUrl 或 sessionId 未配置，跳过连接");
+  if (!settings.bridgeUrl || !settings.bridgeToken) {
+    console.warn("[XHS Bridge] bridgeUrl 或 bridgeToken 未配置，跳过连接");
     return;
   }
   connect();
@@ -66,14 +66,16 @@ function connect() {
   ws = new WebSocket(settings.bridgeUrl);
 
   ws.onopen = () => {
-    console.log("[XHS Bridge] 已连接到 bridge server", settings.bridgeUrl, settings.sessionId);
-    ws.send(JSON.stringify({
+    console.log("[XHS Bridge] 已连接到 bridge server", settings.bridgeUrl);
+    const handshake = {
       role: "extension",
-      session_id: settings.sessionId,
       token: settings.bridgeToken,
       extension_version: chrome.runtime.getManifest().version,
-    }));
-    sendHeartbeat();
+    };
+    if (settings.sessionId) {
+      handshake.session_id = settings.sessionId;
+    }
+    ws.send(JSON.stringify(handshake));
   };
 
   ws.onmessage = async (event) => {
@@ -81,6 +83,17 @@ function connect() {
     try {
       msg = JSON.parse(event.data);
     } catch {
+      return;
+    }
+    if (msg.kind === "hello") {
+      await handleBridgeHello(msg);
+      return;
+    }
+    if (msg.error) {
+      console.error("[XHS Bridge] bridge 返回错误", msg.error_code || "", msg.error);
+      return;
+    }
+    if (!msg.method) {
       return;
     }
     try {
@@ -104,7 +117,7 @@ function connect() {
 }
 
 function sendHeartbeat() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN || !settings.sessionId) return;
   ws.send(JSON.stringify({
     kind: "heartbeat",
     session_id: settings.sessionId,
@@ -112,9 +125,27 @@ function sendHeartbeat() {
   }));
 }
 
+async function handleBridgeHello(msg) {
+  const assignedSessionId = String(msg.session_id || "").trim();
+  if (!assignedSessionId) {
+    console.error("[XHS Bridge] 握手成功但未返回 session_id");
+    return;
+  }
+  settings.sessionId = assignedSessionId;
+  await chrome.storage.local.set({ sessionId: assignedSessionId });
+  console.log(
+    `[XHS Bridge] 当前 Session ID: ${assignedSessionId}${msg.assigned ? "（bridge 已新分配）" : ""}`,
+  );
+  sendHeartbeat();
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
-  if (!("bridgeUrl" in changes) && !("sessionId" in changes) && !("bridgeToken" in changes)) return;
+  if ("sessionId" in changes && !("bridgeUrl" in changes) && !("bridgeToken" in changes)) {
+    settings.sessionId = (changes.sessionId.newValue || "").trim();
+    return;
+  }
+  if (!("bridgeUrl" in changes) && !("bridgeToken" in changes)) return;
   console.log("[XHS Bridge] 配置已更新，准备重连");
   closeSocket();
   void maybeConnect();

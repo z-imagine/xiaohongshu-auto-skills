@@ -59,7 +59,7 @@ metadata:
 - **控制发布频率**：建议每次发布间隔不少于数分钟，避免短时间内批量发布触发风控。
 - **发布前必须让用户确认最终标题、正文和图片/视频**。
 - **推荐使用分步发布**：先 fill → 用户确认 → 再 click-publish。
-- 如使用远端 bridge，命令可补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
 - 远端 bridge 场景下，媒体输入优先使用可访问的 HTTP/HTTPS URL；若用户提供的是本地路径，则必须已配置临时资源服务。
 - 图文发布时，没有图片不得发布。
 - 视频发布时，没有视频不得发布。图片和视频不可混合（二选一）。
@@ -68,6 +68,8 @@ metadata:
 - 需要目标 session 对应的浏览器已登录。
 
 ## 流程 A: 图文/视频发布
+
+以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### Step A.1: 处理内容
 
@@ -212,7 +214,7 @@ python scripts/cli.py publish-video \
 # 远端 bridge + URL 视频
 python scripts/cli.py publish-video \
   --bridge-url wss://bridge.example.com/ws \
-  --bridge-session-id user-a \
+  --bridge-session-id <SESSION_ID_FROM_EXTENSION> \
   --bridge-token "TOKEN" \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \

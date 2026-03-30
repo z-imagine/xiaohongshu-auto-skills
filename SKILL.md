@@ -47,8 +47,8 @@ metadata:
 - 所有操作前应确认登录状态（通过 `check-login`）。
 - 发布和评论操作必须经过用户确认后才能执行。
 - 文件路径必须使用绝对路径。
-- 远端 bridge 模式下，所有命令都可以补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
-- 若 bridge 不在本机，必须确保目标浏览器 extension 已使用相同 `session_id` 连上 bridge。
+- 所有 bridge 模式命令都必须提供 `--bridge-url`、`--bridge-token`。
+- `--bridge-session-id` 必须使用浏览器 extension 连接 bridge 后展示的 Session ID。
 - 发布图文、视频、长文插图时，如果输入的是本地文件且 bridge 为远端模式，必须已配置临时资源服务，或直接提供可访问媒体 URL。
 - CLI 输出为 JSON 格式，结构化呈现给用户。
 - 操作频率不宜过高，保持合理间隔。
@@ -105,6 +105,8 @@ metadata:
 
 ## 快速开始
 
+以下示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须在命令中显式传入。
+
 ```bash
 # 1. 检查登录状态
 python scripts/cli.py check-login
@@ -138,13 +140,13 @@ python scripts/cli.py like-feed \
 # 8. 远端 bridge 示例
 python scripts/cli.py check-login \
   --bridge-url wss://bridge.example.com/ws \
-  --bridge-session-id user-a \
+  --bridge-session-id <SESSION_ID_FROM_EXTENSION> \
   --bridge-token "TOKEN"
 ```
 
 ## 失败处理
 
 - **未登录**：提示用户执行登录流程（xhs-auth）。
-- **目标浏览器未连接**：提示用户检查 extension 中的 `bridge_url / session_id / token` 配置。
+- **目标浏览器未连接**：提示用户检查 extension 中的 `bridge_url / token` 配置，并确认已从扩展页面获取正确的 `session_id`。
 - **操作超时**：检查网络连接，适当增加等待时间。
 - **频率限制**：降低操作频率，增大间隔。

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -18,6 +19,20 @@ class SessionStore:
         self._extensions: dict[str, ServerConnection] = {}
         self._pending: dict[str, tuple[str, asyncio.Future[Any]]] = {}
         self._session_meta: dict[str, SessionState] = {}
+
+    def allocate_session_id(self, preferred: str = "") -> tuple[str, bool]:
+        """Return an existing preferred session_id or allocate a new unique one."""
+        candidate = preferred.strip()
+        if candidate:
+            return candidate, False
+
+        if "default" not in self._extensions and "default" not in self._session_meta:
+            return "default", True
+
+        while True:
+            candidate = f"session-{uuid.uuid4().hex[:12]}"
+            if candidate not in self._extensions and candidate not in self._session_meta:
+                return candidate, True
 
     def register_extension(
         self,

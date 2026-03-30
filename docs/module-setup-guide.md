@@ -96,13 +96,14 @@ export XHS_BRIDGE_TOKEN=<bridge-token>
 打开扩展设置页，填写：
 
 - `Bridge URL`
-- `Session ID`
 - `Bridge Token`
+- 保存后等待扩展连接 bridge，bridge 会自动分配并展示 `Session ID`
 
 ### 推荐规则
 
-- 每个用户浏览器使用唯一 `session_id`
-- CLI 传入的 `--bridge-session-id` 必须与 extension 中配置一致
+- `Bridge URL` 和 `Bridge Token` 为必填项
+- 每个用户浏览器连接成功后会获得唯一 `session_id`
+- CLI 传入的 `--bridge-session-id` 必须使用扩展页面当前展示的值
 
 ## 6. CLI / Skill 调用配置
 
@@ -119,7 +120,7 @@ export XHS_BRIDGE_TOKEN=<bridge-token>
 ```bash
 python scripts/cli.py check-login \
   --bridge-url wss://bridge.example.com/ws \
-  --bridge-session-id user-a \
+  --bridge-session-id <SESSION_ID_FROM_EXTENSION> \
   --bridge-token "<bridge-token>"
 ```
 
@@ -127,7 +128,7 @@ python scripts/cli.py check-login \
 
 ```bash
 export XHS_BRIDGE_URL=wss://bridge.example.com/ws
-export XHS_BRIDGE_SESSION_ID=user-a
+export XHS_BRIDGE_SESSION_ID=<SESSION_ID_FROM_EXTENSION>
 export XHS_BRIDGE_TOKEN=<bridge-token>
 ```
 
@@ -172,6 +173,8 @@ export XHS_ASSET_UPLOAD_TIMEOUT=120
 1. CLI 发出登录命令
 2. bridge 按 `session_id` 路由
 3. extension 在用户浏览器里打开并操作小红书页面
+
+其中 `session_id` 由扩展首次连接 bridge 后自动获取，用户将该值填入 OpenClaw 或 CLI。
 
 ### 图文 / 视频发布
 

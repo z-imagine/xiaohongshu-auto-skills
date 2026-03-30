@@ -85,7 +85,7 @@
 ### 改造内容
 
 1. 引入 `session_id`
-   - 每个用户浏览器连接时携带 `session_id`
+  - 每个用户浏览器连接后由 bridge 分配 `session_id`，扩展持久化保存后用于重连
    - CLI 发命令时也必须携带 `session_id`
    - bridge 按 `session_id` 进行路由
 

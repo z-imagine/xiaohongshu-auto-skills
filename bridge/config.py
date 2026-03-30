@@ -33,16 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--token",
         default=os.getenv("XHS_BRIDGE_TOKEN", ""),
-        help="bridge 鉴权 token（默认空，表示不启用）",
+        help="bridge 鉴权 token（必填，可用 XHS_BRIDGE_TOKEN）",
     )
     return parser
 
 
 def config_from_args(args: argparse.Namespace) -> BridgeConfig:
     """Convert parsed CLI args into a config object."""
+    if not args.token:
+        raise SystemExit("bridge 启动失败：必须通过 --token 或 XHS_BRIDGE_TOKEN 配置鉴权 token")
     return BridgeConfig(
         host=args.host,
         port=args.port,
         token=args.token,
     )
-

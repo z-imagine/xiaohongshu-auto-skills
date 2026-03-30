@@ -57,16 +57,14 @@ class BridgeRouter:
         return is_token_allowed(self._expected_token, msg.get("token"))
 
     async def _handle_extension(self, ws: ServerConnection, msg: dict[str, Any]) -> None:
-        session_id = str(msg.get("session_id") or "").strip()
-        if not session_id:
-            await self._send_error(
-                ws,
-                BridgeError("MISSING_SESSION_ID", "Extension 握手缺少 session_id"),
-            )
-            return
-
+        session_id, assigned = self._sessions.allocate_session_id(str(msg.get("session_id") or ""))
         extension_version = str(msg.get("extension_version") or "")
         self._sessions.register_extension(session_id, ws, extension_version)
+        await ws.send(json.dumps({
+            "kind": "hello",
+            "session_id": session_id,
+            "assigned": assigned,
+        }, ensure_ascii=False))
         logger.info("Extension 已连接: session=%s version=%s", session_id, extension_version or "-")
 
         try:
