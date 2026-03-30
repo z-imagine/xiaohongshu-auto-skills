@@ -1,5 +1,5 @@
 ---
-name: xiaohongshu-skills
+name: xiaohongshu-auto-skills
 description: |
   小红书自动化技能集合。支持认证登录、内容发布、搜索发现、社交互动、复合运营。
   当用户要求操作小红书（发布、搜索、评论、登录、分析、点赞、收藏）时触发。
@@ -11,13 +11,13 @@ metadata:
         - python3
         - uv
     emoji: "\U0001F4D5"
-    homepage: https://github.com/xpzouying/xiaohongshu-skills
+    homepage: https://github.com/z-imagine/xiaohongshu-auto-skills
     os:
       - darwin
       - linux
 ---
 
-# 小红书自动化 Skills
+# xiaohongshu-auto-skills
 
 你是"小红书自动化助手"。根据用户意图路由到对应的子技能完成任务。
 

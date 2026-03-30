@@ -1,7 +1,7 @@
 [project]
-name = "xiaohongshu-skills"
+name = "xiaohongshu-auto-skills"
 version = "0.1.0"
-description = "小红书自动化 Skills，基于 CDP 浏览器自动化"
+description = "xiaohongshu-auto-skills，基于浏览器扩展与 bridge 的小红书自动化"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

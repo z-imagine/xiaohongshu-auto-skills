@@ -1,4 +1,4 @@
-# xiaohongshu-skills
+# xiaohongshu-auto-skills
 
 小红书自动化 Claude Code Skills，使用用户的真实浏览器和账号信息操作小红书。
 
