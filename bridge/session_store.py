@@ -9,7 +9,7 @@ from typing import Any
 
 from websockets.server import ServerConnection
 
-from .types import SessionState
+from .models import SessionState
 
 
 class SessionStore:

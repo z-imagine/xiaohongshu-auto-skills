@@ -24,7 +24,7 @@ xiaohongshu-auto-skills/
 │   ├── config.py
 │   ├── router.py
 │   ├── session_store.py
-│   └── types.py
+│   └── models.py
 ├── extension/
 ├── scripts/
 │   ├── cli.py

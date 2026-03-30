@@ -14,7 +14,7 @@ from websockets.server import ServerConnection
 
 from .auth import is_token_allowed
 from .session_store import SessionStore
-from .types import BridgeError
+from .models import BridgeError
 
 logger = logging.getLogger("xhs-bridge")
 
