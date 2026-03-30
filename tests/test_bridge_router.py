@@ -137,7 +137,7 @@ def test_router_rejects_invalid_token() -> None:
         assert cli_ws.sent_messages == [{"error": "Bridge 鉴权失败", "error_code": "AUTH_FAILED"}]
 
     def router_error(code: str, message: str):
-        from bridge.types import BridgeError
+        from bridge.models import BridgeError
 
         return BridgeError(code, message)
 
