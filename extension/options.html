@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>XHS Bridge 设置</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f1e8;
+        --panel: #fffdf8;
+        --text: #1f1b16;
+        --muted: #6a6156;
+        --line: #d8cfc2;
+        --accent: #bf4d28;
+        --accent-strong: #963510;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "PingFang SC", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(191, 77, 40, 0.12), transparent 34%),
+          linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+
+      .wrap {
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 0 20px 32px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(106, 97, 86, 0.16);
+        border-radius: 20px;
+        box-shadow: 0 18px 60px rgba(79, 55, 34, 0.08);
+        padding: 28px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 30px;
+      }
+
+      p {
+        margin: 0 0 24px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      label {
+        display: block;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+
+      .field {
+        margin-bottom: 18px;
+      }
+
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-size: 14px;
+        background: #fff;
+      }
+
+      input:focus {
+        outline: 2px solid rgba(191, 77, 40, 0.18);
+        border-color: var(--accent);
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      .status {
+        min-height: 22px;
+        margin-top: 14px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <h1>XHS Bridge 设置</h1>
+        <p>配置浏览器扩展要连接的 bridge 地址，以及当前浏览器对应的 session 标识。</p>
+
+        <form id="settings-form">
+          <div class="field">
+            <label for="bridge-url">Bridge URL</label>
+            <input id="bridge-url" name="bridge-url" type="url" placeholder="ws://localhost:9333" required />
+          </div>
+
+          <div class="field">
+            <label for="session-id">Session ID</label>
+            <input id="session-id" name="session-id" type="text" placeholder="default" required />
+          </div>
+
+          <div class="field">
+            <label for="bridge-token">Bridge Token</label>
+            <input id="bridge-token" name="bridge-token" type="password" placeholder="可选" />
+          </div>
+
+          <button type="submit">保存并重连</button>
+          <div class="status" id="status"></div>
+        </form>
+      </div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>
+

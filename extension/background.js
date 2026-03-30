@@ -1,7 +1,7 @@
 /**
  * XHS Bridge - Background Service Worker
  *
- * 连接 Python bridge server（ws://localhost:9333），接收命令并执行：
+ * 连接配置化的 bridge server，接收命令并执行：
  * - navigate / wait_for_load: chrome.tabs.update + onUpdated
  * - evaluate / has_element 等: chrome.scripting.executeScript (MAIN world)
  * - click / input 等 DOM 操作: chrome.tabs.sendMessage → content.js
@@ -9,26 +9,65 @@
  * - get_cookies: chrome.cookies.getAll
  */
 
-const BRIDGE_URL = "ws://localhost:9333";
+const DEFAULT_SETTINGS = {
+  bridgeUrl: "ws://localhost:9333",
+  sessionId: "default",
+  bridgeToken: "",
+};
+
 let ws = null;
+let settings = { ...DEFAULT_SETTINGS };
 
 // 保持 service worker 存活：有开放的 WebSocket 连接时 Chrome 不会终止 SW
 // 额外加 alarm 作为保底
 chrome.alarms.create("keepAlive", { periodInMinutes: 0.4 });
 chrome.alarms.onAlarm.addListener(() => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) connect();
+  if (!ws || ws.readyState !== WebSocket.OPEN) void maybeConnect();
 });
 
 // ───────────────────────── WebSocket ─────────────────────────
 
+async function loadSettings() {
+  const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
+  settings = {
+    bridgeUrl: (stored.bridgeUrl || DEFAULT_SETTINGS.bridgeUrl).trim(),
+    sessionId: (stored.sessionId || DEFAULT_SETTINGS.sessionId).trim(),
+    bridgeToken: stored.bridgeToken || "",
+  };
+  return settings;
+}
+
+function closeSocket() {
+  if (!ws) return;
+  try {
+    ws.onclose = null;
+    ws.close();
+  } catch (e) {}
+  ws = null;
+}
+
+async function maybeConnect() {
+  await loadSettings();
+  if (!settings.bridgeUrl || !settings.sessionId) {
+    console.warn("[XHS Bridge] bridgeUrl 或 sessionId 未配置，跳过连接");
+    return;
+  }
+  connect();
+}
+
 function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
 
-  ws = new WebSocket(BRIDGE_URL);
+  ws = new WebSocket(settings.bridgeUrl);
 
   ws.onopen = () => {
-    console.log("[XHS Bridge] 已连接到 bridge server");
-    ws.send(JSON.stringify({ role: "extension" }));
+    console.log("[XHS Bridge] 已连接到 bridge server", settings.bridgeUrl, settings.sessionId);
+    ws.send(JSON.stringify({
+      role: "extension",
+      session_id: settings.sessionId,
+      token: settings.bridgeToken,
+      extension_version: chrome.runtime.getManifest().version,
+    }));
   };
 
   ws.onmessage = async (event) => {
@@ -48,13 +87,23 @@ function connect() {
 
   ws.onclose = () => {
     console.log("[XHS Bridge] 连接断开，3s 后重连...");
-    setTimeout(connect, 3000);
+    setTimeout(() => {
+      void maybeConnect();
+    }, 3000);
   };
 
   ws.onerror = (e) => {
     console.error("[XHS Bridge] WS 错误", e);
   };
 }
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  if (!("bridgeUrl" in changes) && !("sessionId" in changes) && !("bridgeToken" in changes)) return;
+  console.log("[XHS Bridge] 配置已更新，准备重连");
+  closeSocket();
+  void maybeConnect();
+});
 
 // ───────────────────────── 命令路由 ─────────────────────────
 
@@ -533,4 +582,4 @@ async function getOrOpenXhsTab() {
 
 // ───────────────────────── 启动 ─────────────────────────
 
-connect();
+void maybeConnect();

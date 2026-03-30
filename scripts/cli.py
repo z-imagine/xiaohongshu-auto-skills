@@ -1,7 +1,7 @@
-"""统一 CLI 入口（Extension Bridge 版本）
+"""统一 CLI 入口（Extension Bridge 版本）.
 
 通过浏览器扩展 Bridge 连接用户已打开的浏览器，无需 Chrome 调试端口。
-先启动 bridge_server.py，并在浏览器中安装 XHS Bridge 扩展，再运行此 CLI。
+本地模式下可自动启动 bridge；远端模式下需要用户自行配置 extension 连接。
 
 输出: JSON（ensure_ascii=False）
 退出码: 0=成功, 1=未登录, 2=错误
@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sys
+from urllib.parse import urlparse
 
 # Windows 控制台默认编码（如 cp1252）不支持中文，强制 UTF-8
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -66,38 +67,51 @@ class _DummyBrowser:
         pass
 
 
-def _ensure_bridge_ready(bridge_url: str) -> None:
+def _is_local_bridge(bridge_url: str) -> bool:
+    """Return True when the bridge points to the local machine."""
+    host = (urlparse(bridge_url).hostname or "").lower()
+    return host in {"", "localhost", "127.0.0.1", "::1"}
+
+
+def _ensure_bridge_ready(bridge_url: str, session_id: str, token: str) -> None:
     """确保 bridge server 在运行、浏览器扩展已连接。若未就绪则自动启动。"""
     import subprocess
     import time
-    from pathlib import Path
 
     from xhs.bridge import BridgePage
 
-    page = BridgePage(bridge_url)
+    page = BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
+    local_bridge = _is_local_bridge(bridge_url)
 
     # ── 1. 检查 bridge server ────────────────────────────────────────
     if not page.is_server_running():
+        if not local_bridge:
+            logger.warning("Bridge server 未运行，请确认远端 bridge 地址可访问: %s", bridge_url)
+            return
+
         logger.info("Bridge server 未运行，正在启动...")
-        scripts_dir = Path(__file__).parent
         kwargs: dict = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-        subprocess.Popen(
-            [sys.executable, str(scripts_dir / "bridge_server.py")],
-            **kwargs,
-        )
+        subprocess.Popen([sys.executable, "-m", "bridge.server"], **kwargs)
         for _ in range(10):
             time.sleep(1)
             if page.is_server_running():
                 logger.info("Bridge server 已启动")
                 break
         else:
-            logger.warning("Bridge server 启动超时，请手动运行 bridge_server.py")
+            logger.warning("Bridge server 启动超时，请手动运行 python -m bridge.server")
             return
 
     # ── 2. 检查扩展是否连接 ──────────────────────────────────────────
     if page.is_extension_connected():
+        return
+
+    if not local_bridge:
+        logger.warning(
+            "目标 session 尚未连接浏览器扩展，请在目标浏览器中配置并连接 extension: session=%s",
+            session_id,
+        )
         return
 
     logger.info("浏览器扩展未连接，正在打开 Chrome...")
@@ -138,9 +152,15 @@ def _connect(args: argparse.Namespace):
     """返回 (browser, page)，browser 为空对象，page 通过 Extension Bridge 操作浏览器。"""
     from xhs.bridge import BridgePage
 
-    bridge_url = getattr(args, "bridge_url", "ws://localhost:9333")
-    _ensure_bridge_ready(bridge_url)
-    return _DummyBrowser(), BridgePage(bridge_url)
+    bridge_url = getattr(args, "bridge_url", os.getenv("XHS_BRIDGE_URL", "ws://localhost:9333"))
+    session_id = getattr(
+        args,
+        "bridge_session_id",
+        os.getenv("XHS_BRIDGE_SESSION_ID", "default"),
+    )
+    token = getattr(args, "bridge_token", os.getenv("XHS_BRIDGE_TOKEN", ""))
+    _ensure_bridge_ready(bridge_url, session_id, token)
+    return _DummyBrowser(), BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
 
 
 # _connect_saved_tab / _connect_existing 在 bridge 模式下与 _connect 等价
@@ -707,8 +727,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--bridge-url",
-        default="ws://localhost:9333",
+        default=os.getenv("XHS_BRIDGE_URL", "ws://localhost:9333"),
         help="Bridge server WebSocket 地址 (default: ws://localhost:9333)",
+    )
+    parser.add_argument(
+        "--bridge-session-id",
+        default=os.getenv("XHS_BRIDGE_SESSION_ID", "default"),
+        help="Bridge session 标识 (default: default)",
+    )
+    parser.add_argument(
+        "--bridge-token",
+        default=os.getenv("XHS_BRIDGE_TOKEN", ""),
+        help="Bridge 鉴权 token（默认空）",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)

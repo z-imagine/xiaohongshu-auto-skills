@@ -8,17 +8,20 @@
     "cookies",
     "scripting",
     "alarms",
-    "debugger"
+    "debugger",
+    "storage"
   ],
   "host_permissions": [
     "https://www.xiaohongshu.com/*",
     "https://xiaohongshu.com/*",
     "https://creator.xiaohongshu.com/*",
-    "ws://localhost/*"
+    "ws://*/*",
+    "wss://*/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "options_page": "options.html",
   "content_scripts": [
     {
       "matches": [
