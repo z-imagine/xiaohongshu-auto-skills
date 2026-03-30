@@ -130,7 +130,7 @@ session_meta: dict[str, SessionState]
    - `bridge_token`
 
 2. 增加配置 UI
-   - 推荐实现一个简单的 options page
+   - 推荐实现 popup 作为主入口，并保留 options page 作为排障页
    - 用户首次安装后手动填写或扫码导入
 
 3. background.js 启动时读取配置

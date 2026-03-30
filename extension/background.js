@@ -14,10 +14,18 @@ const DEFAULT_SETTINGS = {
   sessionId: "",
   bridgeToken: "",
 };
+const DEFAULT_BRIDGE_STATUS = {
+  phase: "idle",
+  label: "未配置",
+  detail: "请填写 Bridge URL 和 Bridge Token",
+  lastError: "",
+  updatedAt: 0,
+};
 const HEARTBEAT_INTERVAL_MS = 20_000;
 
 let ws = null;
 let settings = { ...DEFAULT_SETTINGS };
+let bridgeStatus = { ...DEFAULT_BRIDGE_STATUS };
 
 // 保持 service worker 存活：有开放的 WebSocket 连接时 Chrome 不会终止 SW
 // 额外加 alarm 作为保底
@@ -33,13 +41,47 @@ chrome.alarms.onAlarm.addListener(() => {
 // ───────────────────────── WebSocket ─────────────────────────
 
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
+  const stored = await chrome.storage.local.get({
+    ...DEFAULT_SETTINGS,
+    bridgeStatus: DEFAULT_BRIDGE_STATUS,
+  });
   settings = {
     bridgeUrl: (stored.bridgeUrl || DEFAULT_SETTINGS.bridgeUrl).trim(),
     sessionId: (stored.sessionId || DEFAULT_SETTINGS.sessionId).trim(),
     bridgeToken: stored.bridgeToken || "",
   };
+  bridgeStatus = {
+    ...DEFAULT_BRIDGE_STATUS,
+    ...(stored.bridgeStatus || {}),
+  };
   return settings;
+}
+
+async function setBridgeStatus(patch) {
+  bridgeStatus = {
+    ...bridgeStatus,
+    ...patch,
+    updatedAt: Date.now(),
+  };
+  await chrome.storage.local.set({ bridgeStatus });
+  void refreshActionBadge();
+}
+
+async function refreshActionBadge() {
+  let text = "";
+  let color = "#7b7266";
+  if (bridgeStatus.phase === "connected") {
+    text = "ON";
+    color = "#2f8f52";
+  } else if (bridgeStatus.phase === "connecting" || bridgeStatus.phase === "handshaking") {
+    text = "...";
+    color = "#bf7b28";
+  } else if (bridgeStatus.phase === "error" || bridgeStatus.phase === "disconnected") {
+    text = "ERR";
+    color = "#b33a2d";
+  }
+  await chrome.action.setBadgeBackgroundColor({ color });
+  await chrome.action.setBadgeText({ text });
 }
 
 function closeSocket() {
@@ -55,8 +97,20 @@ async function maybeConnect() {
   await loadSettings();
   if (!settings.bridgeUrl || !settings.bridgeToken) {
     console.warn("[XHS Bridge] bridgeUrl 或 bridgeToken 未配置，跳过连接");
+    await setBridgeStatus({
+      phase: "idle",
+      label: "未配置",
+      detail: "请在扩展中填写 Bridge URL 和 Bridge Token",
+      lastError: "",
+    });
     return;
   }
+  await setBridgeStatus({
+    phase: "connecting",
+    label: "连接中",
+    detail: `正在连接 ${settings.bridgeUrl}`,
+    lastError: "",
+  });
   connect();
 }
 
@@ -65,8 +119,14 @@ function connect() {
 
   ws = new WebSocket(settings.bridgeUrl);
 
-  ws.onopen = () => {
+  ws.onopen = async () => {
     console.log("[XHS Bridge] 已连接到 bridge server", settings.bridgeUrl);
+    await setBridgeStatus({
+      phase: "handshaking",
+      label: "握手中",
+      detail: "已连接 bridge，正在申请或恢复 Session ID",
+      lastError: "",
+    });
     const handshake = {
       role: "extension",
       token: settings.bridgeToken,
@@ -91,6 +151,12 @@ function connect() {
     }
     if (msg.error) {
       console.error("[XHS Bridge] bridge 返回错误", msg.error_code || "", msg.error);
+      await setBridgeStatus({
+        phase: "error",
+        label: "连接失败",
+        detail: msg.error,
+        lastError: msg.error,
+      });
       return;
     }
     if (!msg.method) {
@@ -104,15 +170,26 @@ function connect() {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = async () => {
     console.log("[XHS Bridge] 连接断开，3s 后重连...");
+    await setBridgeStatus({
+      phase: "disconnected",
+      label: "已断开",
+      detail: "与 bridge 的连接已断开，3 秒后自动重连",
+    });
     setTimeout(() => {
       void maybeConnect();
     }, 3000);
   };
 
-  ws.onerror = (e) => {
+  ws.onerror = async (e) => {
     console.error("[XHS Bridge] WS 错误", e);
+    await setBridgeStatus({
+      phase: "error",
+      label: "连接异常",
+      detail: "WebSocket 连接发生异常",
+      lastError: "WebSocket error",
+    });
   };
 }
 
@@ -129,10 +206,22 @@ async function handleBridgeHello(msg) {
   const assignedSessionId = String(msg.session_id || "").trim();
   if (!assignedSessionId) {
     console.error("[XHS Bridge] 握手成功但未返回 session_id");
+    await setBridgeStatus({
+      phase: "error",
+      label: "握手失败",
+      detail: "bridge 未返回 Session ID",
+      lastError: "missing session_id from bridge",
+    });
     return;
   }
   settings.sessionId = assignedSessionId;
   await chrome.storage.local.set({ sessionId: assignedSessionId });
+  await setBridgeStatus({
+    phase: "connected",
+    label: "已连接",
+    detail: `当前 Session ID: ${assignedSessionId}`,
+    lastError: "",
+  });
   console.log(
     `[XHS Bridge] 当前 Session ID: ${assignedSessionId}${msg.assigned ? "（bridge 已新分配）" : ""}`,
   );
@@ -149,6 +238,31 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   console.log("[XHS Bridge] 配置已更新，准备重连");
   closeSocket();
   void maybeConnect();
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || typeof message !== "object") return undefined;
+  if (message.type === "bridge:reconnect") {
+    closeSocket();
+    void maybeConnect().then(() => {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+  if (message.type === "bridge:get-state") {
+    sendResponse({
+      ok: true,
+      settings: {
+        bridgeUrl: settings.bridgeUrl,
+        sessionId: settings.sessionId,
+        hasBridgeToken: Boolean(settings.bridgeToken),
+      },
+      bridgeStatus,
+      connected: Boolean(ws && ws.readyState === WebSocket.OPEN),
+    });
+    return false;
+  }
+  return undefined;
 });
 
 setInterval(() => {
@@ -689,4 +803,7 @@ async function getOrOpenXhsTab() {
 
 // ───────────────────────── 启动 ─────────────────────────
 
+void loadSettings().then(() => {
+  void refreshActionBadge();
+});
 void maybeConnect();

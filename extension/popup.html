@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>XHS Bridge 设置</title>
+    <title>XHS Bridge</title>
     <style>
       :root {
         color-scheme: light;
@@ -20,47 +20,46 @@
       }
 
       body {
+        width: 380px;
         margin: 0;
         font-family: "Avenir Next", "PingFang SC", sans-serif;
         background:
-          radial-gradient(circle at top right, rgba(196, 85, 42, 0.12), transparent 34%),
+          radial-gradient(circle at top right, rgba(196, 85, 42, 0.16), transparent 34%),
           linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
         color: var(--text);
       }
 
       .wrap {
-        max-width: 780px;
-        margin: 36px auto;
-        padding: 0 20px 36px;
+        padding: 18px;
       }
 
       h1 {
         margin: 0;
-        font-size: 46px;
-        line-height: 1.02;
+        font-size: 28px;
+        line-height: 1.05;
       }
 
       p {
-        margin: 10px 0 0;
+        margin: 8px 0 0;
         color: var(--muted);
-        line-height: 1.6;
-        font-size: 16px;
+        line-height: 1.5;
+        font-size: 13px;
       }
 
       .panel {
-        margin-top: 20px;
+        margin-top: 16px;
         background: var(--panel);
         border: 1px solid rgba(111, 102, 91, 0.14);
-        border-radius: 24px;
-        box-shadow: 0 20px 56px rgba(72, 50, 30, 0.08);
-        padding: 24px;
+        border-radius: 20px;
+        box-shadow: 0 14px 40px rgba(72, 50, 30, 0.08);
+        padding: 16px;
       }
 
       .status-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: 12px;
       }
 
       .status-chip {
@@ -68,8 +67,8 @@
         align-items: center;
         gap: 8px;
         border-radius: 999px;
-        padding: 10px 14px;
-        font-size: 14px;
+        padding: 8px 12px;
+        font-size: 13px;
         font-weight: 700;
         background: rgba(111, 102, 91, 0.12);
         color: var(--text);
@@ -77,8 +76,8 @@
 
       .status-chip::before {
         content: "";
-        width: 10px;
-        height: 10px;
+        width: 9px;
+        height: 9px;
         border-radius: 999px;
         background: currentColor;
       }
@@ -101,20 +100,20 @@
       }
 
       .status-detail {
-        margin-top: 12px;
+        margin-top: 10px;
+        font-size: 13px;
         color: var(--muted);
-        font-size: 14px;
-        line-height: 1.6;
+        line-height: 1.5;
       }
 
       .field {
-        margin-top: 18px;
+        margin-top: 14px;
       }
 
       label {
         display: block;
         margin-bottom: 8px;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
       }
 
@@ -122,9 +121,9 @@
         width: 100%;
         box-sizing: border-box;
         border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: 14px 15px;
-        font-size: 15px;
+        border-radius: 14px;
+        padding: 12px 13px;
+        font-size: 14px;
         background: #fff;
       }
 
@@ -134,11 +133,11 @@
       }
 
       .session-card {
-        margin-top: 18px;
-        border-radius: 18px;
+        margin-top: 14px;
+        border-radius: 16px;
         border: 1px solid rgba(111, 102, 91, 0.16);
         background: #fffcf7;
-        padding: 16px;
+        padding: 14px;
       }
 
       .session-head {
@@ -149,40 +148,40 @@
       }
 
       .session-title {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
       }
 
       .session-note {
         margin-top: 8px;
         color: var(--muted);
-        font-size: 13px;
-        line-height: 1.6;
+        font-size: 12px;
+        line-height: 1.5;
       }
 
       .session-value {
-        margin-top: 12px;
-        border-radius: 14px;
+        margin-top: 10px;
+        border-radius: 12px;
         background: #fff;
         border: 1px dashed rgba(111, 102, 91, 0.22);
-        padding: 13px 14px;
+        padding: 12px;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 14px;
+        font-size: 13px;
         word-break: break-all;
-        min-height: 20px;
+        min-height: 18px;
       }
 
       .actions {
         display: flex;
         gap: 10px;
-        margin-top: 18px;
+        margin-top: 16px;
       }
 
       button {
         border: 0;
         border-radius: 999px;
-        padding: 12px 18px;
-        font-size: 14px;
+        padding: 11px 16px;
+        font-size: 13px;
         font-weight: 700;
         cursor: pointer;
       }
@@ -202,17 +201,17 @@
       }
 
       .status-line {
-        margin-top: 14px;
-        min-height: 20px;
+        margin-top: 12px;
+        min-height: 18px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>XHS Bridge 设置</h1>
-      <p>主入口已经迁移到扩展 popup。这里保留同一套状态与配置界面，方便排障和复制 Session ID。</p>
+      <h1>XHS Bridge</h1>
+      <p>点击扩展图标即可配置连接，并查看当前浏览器绑定的 Session ID。</p>
 
       <div class="panel">
         <div class="status-row">

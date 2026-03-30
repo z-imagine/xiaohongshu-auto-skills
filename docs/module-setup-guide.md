@@ -93,11 +93,12 @@ export XHS_BRIDGE_TOKEN=<bridge-token>
 
 ### 配置
 
-打开扩展设置页，填写：
+点击浏览器工具栏里的扩展图标，在 popup 中填写：
 
 - `Bridge URL`
 - `Bridge Token`
 - 保存后等待扩展连接 bridge，bridge 会自动分配并展示 `Session ID`
+- 如需排障，也可打开扩展详情页中的 options 页面查看相同状态
 
 ### 推荐规则
 
