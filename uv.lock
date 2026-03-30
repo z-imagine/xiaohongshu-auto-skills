@@ -263,7 +263,7 @@ wheels = [
 ]
 
 [[package]]
-name = "xiaohongshu-skills"
+name = "xiaohongshu-auto-skills"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
