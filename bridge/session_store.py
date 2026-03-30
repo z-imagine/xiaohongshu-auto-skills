@@ -30,6 +30,9 @@ class SessionStore:
         state.connected = True
         state.extension_version = extension_version
         state.last_seen = datetime.utcnow()
+        state.connected_at = state.last_seen
+        state.connect_count += 1
+        state.last_error = ""
         self._session_meta[session_id] = state
 
     def unregister_extension(self, session_id: str, ws: ServerConnection) -> None:
@@ -40,6 +43,8 @@ class SessionStore:
         state = self._session_meta.get(session_id) or SessionState(session_id=session_id)
         state.connected = False
         state.last_seen = datetime.utcnow()
+        state.disconnected_at = state.last_seen
+        state.disconnect_count += 1
         self._session_meta[session_id] = state
 
     def has_extension(self, session_id: str) -> bool:
@@ -51,8 +56,22 @@ class SessionStore:
     def get_extension(self, session_id: str) -> ServerConnection | None:
         return self._extensions.get(session_id)
 
-    def touch_session(self, session_id: str) -> None:
+    def touch_session(self, session_id: str, heartbeat: bool = False) -> None:
         state = self._session_meta.get(session_id) or SessionState(session_id=session_id)
+        state.last_seen = datetime.utcnow()
+        if heartbeat:
+            state.last_heartbeat_at = state.last_seen
+        self._session_meta[session_id] = state
+
+    def mark_command(self, session_id: str, method: str) -> None:
+        state = self._session_meta.get(session_id) or SessionState(session_id=session_id)
+        state.last_method = method
+        state.last_command_at = datetime.utcnow()
+        self._session_meta[session_id] = state
+
+    def set_last_error(self, session_id: str, error: str) -> None:
+        state = self._session_meta.get(session_id) or SessionState(session_id=session_id)
+        state.last_error = error
         state.last_seen = datetime.utcnow()
         self._session_meta[session_id] = state
 
@@ -91,3 +110,5 @@ class SessionStore:
     def get_state(self, session_id: str) -> SessionState:
         return self._session_meta.get(session_id) or SessionState(session_id=session_id)
 
+    def list_states(self) -> list[SessionState]:
+        return list(self._session_meta.values())

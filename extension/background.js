@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   sessionId: "default",
   bridgeToken: "",
 };
+const HEARTBEAT_INTERVAL_MS = 20_000;
 
 let ws = null;
 let settings = { ...DEFAULT_SETTINGS };
@@ -22,7 +23,11 @@ let settings = { ...DEFAULT_SETTINGS };
 // 额外加 alarm 作为保底
 chrome.alarms.create("keepAlive", { periodInMinutes: 0.4 });
 chrome.alarms.onAlarm.addListener(() => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) void maybeConnect();
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    void maybeConnect();
+    return;
+  }
+  sendHeartbeat();
 });
 
 // ───────────────────────── WebSocket ─────────────────────────
@@ -68,6 +73,7 @@ function connect() {
       token: settings.bridgeToken,
       extension_version: chrome.runtime.getManifest().version,
     }));
+    sendHeartbeat();
   };
 
   ws.onmessage = async (event) => {
@@ -97,6 +103,15 @@ function connect() {
   };
 }
 
+function sendHeartbeat() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    kind: "heartbeat",
+    session_id: settings.sessionId,
+    at: Date.now(),
+  }));
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
   if (!("bridgeUrl" in changes) && !("sessionId" in changes) && !("bridgeToken" in changes)) return;
@@ -104,6 +119,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   closeSocket();
   void maybeConnect();
 });
+
+setInterval(() => {
+  sendHeartbeat();
+}, HEARTBEAT_INTERVAL_MS);
 
 // ───────────────────────── 命令路由 ─────────────────────────
 
