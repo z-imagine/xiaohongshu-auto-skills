@@ -49,7 +49,7 @@ metadata:
 按优先级判断：
 
 1. 用户说"发长文 / 写长文 / 长文模式"：进入 **长文发布流程（流程 B）**。
-2. 用户已提供 `标题 + 正文 + 视频（本地路径）`：进入 **视频发布流程（流程 A.2）**。
+2. 用户已提供 `标题 + 正文 + 视频（本地路径或 URL）`：进入 **视频发布流程（流程 A.2）**。
 3. 用户已提供 `标题 + 正文 + 图片（本地路径或 URL）`：进入 **图文发布流程（流程 A.1）**。
 4. 用户只提供网页 URL：先用 WebFetch 提取内容和图片，再给出可发布草稿等待确认。
 5. 信息不全：先补齐缺失信息，不要直接发布。
@@ -59,11 +59,13 @@ metadata:
 - **控制发布频率**：建议每次发布间隔不少于数分钟，避免短时间内批量发布触发风控。
 - **发布前必须让用户确认最终标题、正文和图片/视频**。
 - **推荐使用分步发布**：先 fill → 用户确认 → 再 click-publish。
+- 如使用远端 bridge，命令可补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 远端 bridge 场景下，媒体输入优先使用可访问的 HTTP/HTTPS URL；若用户提供的是本地路径，则必须已配置临时资源服务。
 - 图文发布时，没有图片不得发布。
 - 视频发布时，没有视频不得发布。图片和视频不可混合（二选一）。
 - 标题长度不超过 20（UTF-16 字节数向上取整除以 2：汉字/全角符号计 1，英文/数字/半角符号每 **2 个**计 1）。例："hello"= 3，"你好hello" = 4，勿用"每个字符计 1"估算。
 - 如果使用文件路径，必须使用绝对路径，禁止相对路径。
-- 需要先有运行中的 Chrome，且已登录。
+- 需要目标 session 对应的浏览器已登录。
 
 ## 流程 A: 图文/视频发布
 
@@ -124,10 +126,15 @@ metadata:
 
 #### 图片路径说明（重要）
 
-`--images` 支持本地路径和 HTTP/HTTPS URL，**脚本会自动下载 URL 图片，无需手动 curl/wget/下载**。
+`--images` 支持本地路径和 HTTP/HTTPS URL。
+
+- 本地 bridge 场景下：本地路径和 URL 都可直接使用。
+- 远端 bridge 场景下：
+  - 直接传 HTTP/HTTPS URL 最稳妥
+  - 若传本地路径，则必须先配置临时资源服务
 
 ```bash
-# URL 图片：直接传 URL，脚本自动下载
+# URL 图片：直接传 URL
 --images "https://example.com/pic1.jpg" "https://example.com/pic2.png"
 
 # 本地图片：传绝对路径
@@ -137,7 +144,7 @@ metadata:
 --images "https://example.com/pic1.jpg" "/abs/path/pic2.jpg"
 ```
 
-**禁止手动下载图片**：不要用 curl、wget 或其他工具先下载图片再传路径，直接传 URL 即可，否则会因路径猜测错误而失败。
+**禁止手动下载图片**：不要用 curl、wget 或其他工具先下载图片再传路径，直接传 URL 即可。
 
 #### 分步发布（推荐）
 
@@ -201,6 +208,15 @@ python scripts/cli.py publish-video \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --video "/abs/path/video.mp4"
+
+# 远端 bridge + URL 视频
+python scripts/cli.py publish-video \
+  --bridge-url wss://bridge.example.com/ws \
+  --bridge-session-id user-a \
+  --bridge-token "TOKEN" \
+  --title-file /tmp/xhs_title.txt \
+  --content-file /tmp/xhs_content.txt \
+  --video "https://example.com/video.mp4"
 
 # 带标签和定时发布
 python scripts/cli.py publish \
