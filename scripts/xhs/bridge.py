@@ -1,11 +1,4 @@
-"""BridgePage - 通过浏览器扩展 Bridge 实现与 CDP Page 相同的接口。
-
-CLI 命令通过 WebSocket 发送到 bridge_server.py，
-bridge_server 转发给浏览器扩展执行，结果原路返回。
-
-每次调用都是一次短连接（发一条命令 → 收一条回复），
-不需要维护持久连接。
-"""
+"""BridgePage - 通过浏览器扩展 Bridge 实现与 CDP Page 相同的接口。"""
 
 from __future__ import annotations
 
@@ -19,19 +12,32 @@ import websockets.sync.client as ws_client
 from .errors import CDPError, ElementNotFoundError
 
 BRIDGE_URL = "ws://localhost:9333"
+DEFAULT_SESSION_ID = "default"
 
 
 class BridgePage:
     """与 CDP Page 接口兼容的 Extension Bridge 实现。"""
 
-    def __init__(self, bridge_url: str = BRIDGE_URL) -> None:
+    def __init__(
+        self,
+        bridge_url: str = BRIDGE_URL,
+        session_id: str = DEFAULT_SESSION_ID,
+        token: str = "",
+    ) -> None:
         self._bridge_url = bridge_url
+        self._session_id = session_id
+        self._token = token
 
     # ─── 内部通信 ───────────────────────────────────────────────
 
     def _call(self, method: str, params: dict | None = None) -> Any:
         """向 bridge server 发送一条命令并等待结果。"""
-        msg: dict[str, Any] = {"role": "cli", "method": method}
+        msg: dict[str, Any] = {
+            "role": "cli",
+            "method": method,
+            "session_id": self._session_id,
+            "token": self._token,
+        }
         if params:
             msg["params"] = params
         try:
@@ -39,7 +45,7 @@ class BridgePage:
                 ws.send(json.dumps(msg, ensure_ascii=False))
                 raw = ws.recv(timeout=90)
         except OSError as e:
-            raise CDPError(f"无法连接到 bridge server（ws://localhost:9333）: {e}") from e
+            raise CDPError(f"无法连接到 bridge server（{self._bridge_url}）: {e}") from e
 
         resp = json.loads(raw)
         if "error" in resp and resp["error"]:
@@ -192,7 +198,12 @@ class BridgePage:
         """检查 bridge server 是否在运行（不需要 extension 已连接）。"""
         try:
             with ws_client.connect(self._bridge_url, open_timeout=3) as ws:
-                ws.send(json.dumps({"role": "cli", "method": "ping_server"}))
+                ws.send(json.dumps({
+                    "role": "cli",
+                    "method": "ping_server",
+                    "session_id": self._session_id,
+                    "token": self._token,
+                }))
                 raw = ws.recv(timeout=5)
             resp = json.loads(raw)
             return "result" in resp
@@ -203,7 +214,12 @@ class BridgePage:
         """检查浏览器扩展是否已连接到 bridge server。"""
         try:
             with ws_client.connect(self._bridge_url, open_timeout=3) as ws:
-                ws.send(json.dumps({"role": "cli", "method": "ping_server"}))
+                ws.send(json.dumps({
+                    "role": "cli",
+                    "method": "ping_server",
+                    "session_id": self._session_id,
+                    "token": self._token,
+                }))
                 raw = ws.recv(timeout=5)
             resp = json.loads(raw)
             return bool(resp.get("result", {}).get("extension_connected"))
@@ -214,3 +230,8 @@ class BridgePage:
     def target_id(self) -> str:
         """兼容旧代码对 page.target_id 的引用。"""
         return "extension-bridge"
+
+    @property
+    def session_id(self) -> str:
+        """Expose the bridge session id for debugging."""
+        return self._session_id
