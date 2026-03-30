@@ -47,6 +47,9 @@ metadata:
 - 所有操作前应确认登录状态（通过 `check-login`）。
 - 发布和评论操作必须经过用户确认后才能执行。
 - 文件路径必须使用绝对路径。
+- 远端 bridge 模式下，所有命令都可以补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 若 bridge 不在本机，必须确保目标浏览器 extension 已使用相同 `session_id` 连上 bridge。
+- 发布图文、视频、长文插图时，如果输入的是本地文件且 bridge 为远端模式，必须已配置临时资源服务，或直接提供可访问媒体 URL。
 - CLI 输出为 JSON 格式，结构化呈现给用户。
 - 操作频率不宜过高，保持合理间隔。
 
@@ -103,42 +106,45 @@ metadata:
 ## 快速开始
 
 ```bash
-# 1. 启动 Chrome
-python scripts/chrome_launcher.py
-
-# 2. 检查登录状态
+# 1. 检查登录状态
 python scripts/cli.py check-login
 
-# 3. 登录（如需要）
+# 2. 登录（如需要）
 python scripts/cli.py login
 
-# 4. 搜索笔记
+# 3. 搜索笔记
 python scripts/cli.py search-feeds --keyword "关键词"
 
-# 5. 查看笔记详情
+# 4. 查看笔记详情
 python scripts/cli.py get-feed-detail \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
 
-# 6. 发布图文
+# 5. 发布图文
 python scripts/cli.py publish \
   --title-file title.txt \
   --content-file content.txt \
   --images "/abs/path/pic1.jpg"
 
-# 7. 发表评论
+# 6. 发表评论
 python scripts/cli.py post-comment \
   --feed-id FEED_ID \
   --xsec-token XSEC_TOKEN \
   --content "评论内容"
 
-# 8. 点赞
+# 7. 点赞
 python scripts/cli.py like-feed \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
+
+# 8. 远端 bridge 示例
+python scripts/cli.py check-login \
+  --bridge-url wss://bridge.example.com/ws \
+  --bridge-session-id user-a \
+  --bridge-token "TOKEN"
 ```
 
 ## 失败处理
 
 - **未登录**：提示用户执行登录流程（xhs-auth）。
-- **Chrome 未启动**：使用 `chrome_launcher.py` 启动浏览器。
+- **目标浏览器未连接**：提示用户检查 extension 中的 `bridge_url / session_id / token` 配置。
 - **操作超时**：检查网络连接，适当增加等待时间。
 - **频率限制**：降低操作频率，增大间隔。
