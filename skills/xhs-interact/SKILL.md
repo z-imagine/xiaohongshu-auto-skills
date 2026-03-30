@@ -54,13 +54,15 @@ metadata:
 
 - **控制互动频率**：避免短时间内批量点赞、评论或收藏，建议每次操作之间保持间隔，以免触发风控。
 - **评论和回复内容必须经过用户确认后才能发送**。
-- 如使用远端 bridge，命令可补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
 - 所有互动操作需要 `feed_id` 和 `xsec_token`（从搜索或详情中获取）。
 - 评论文本不可为空。
 - 点赞和收藏操作是幂等的（重复执行不会出错）。
 - CLI 输出 JSON 格式。
 
 ## 工作流程
+
+以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### 发表评论
 

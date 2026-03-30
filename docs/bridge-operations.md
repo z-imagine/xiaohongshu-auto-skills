@@ -47,12 +47,12 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 在扩展设置页配置：
 
 - `Bridge URL`
-- `Session ID`
 - `Bridge Token`
+- 连接后由 bridge 自动分配的 `Session ID`
 
 ## 3. Session 模型
 
-一条浏览器连接对应一个 `session_id`。
+一条浏览器连接对应一个 `session_id`。该值由 bridge 在扩展首次连接时分配，并由扩展持久化保存。
 
 bridge 内部会记录：
 
@@ -93,7 +93,7 @@ bridge 当前统一返回：
 检查：
 
 1. extension 是否已经打开并保存配置
-2. `session_id` 是否和 CLI 使用的一致
+2. extension 页面展示的 `session_id` 是否和 CLI 使用的一致
 3. token 是否一致
 4. 扩展设置页中的 bridge 地址是否指向正确环境
 

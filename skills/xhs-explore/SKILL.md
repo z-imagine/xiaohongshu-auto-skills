@@ -54,12 +54,14 @@ metadata:
 
 - **控制查询频率**：避免频繁、连续地搜索或加载大量内容，操作之间保持适当间隔。
 - 所有操作需要目标 session 对应的浏览器已登录小红书。
-- 如使用远端 bridge，命令可补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
 - `feed_id` 和 `xsec_token` 必须配对使用，从搜索结果或首页 Feed 中获取。
 - 结果应结构化呈现，突出关键字段。
 - CLI 输出为 JSON 格式。
 
 ## 工作流程
+
+以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### 首页 Feed 列表
 

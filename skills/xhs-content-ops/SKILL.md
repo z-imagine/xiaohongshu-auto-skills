@@ -61,11 +61,13 @@ metadata:
 - 复合流程中每一步都应向用户报告进度。
 - 发布类操作必须经过用户确认（参考 xhs-publish 约束）。
 - 评论类操作必须经过用户确认（参考 xhs-interact 约束）。
-- 如使用远端 bridge，命令可补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
 - **控制整体频率**：即使使用真实账号和浏览器，频繁的自动化操作仍可能触发风控，建议分批、间隔执行，不要一次性处理大量任务。
 - 所有数据分析结果使用 markdown 表格结构化呈现。
 
 ## 工作流程
+
+以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### 竞品分析
 

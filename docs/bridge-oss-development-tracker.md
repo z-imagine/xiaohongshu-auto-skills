@@ -93,7 +93,7 @@ xiaohongshu-auto-skills/
 | P1-04 | P0 | bridge 引入 session 路由 | 支持 `session_id -> extension_ws` | P0-03, P1-02 | 多 session 路由能力 | done |
 | P1-05 | P0 | bridge 引入 token 鉴权 | 拒绝匿名或错误 token 连接 | P0-03, P1-02 | 鉴权能力 | done |
 | P1-06 | P0 | bridge 状态查询接口改造 | `ping_server` 改为按 session 查询在线状态 | P1-04 | session 状态接口 | done |
-| P1-07 | P0 | extension 配置存储实现 | 保存 `bridge_url` / `session_id` / `token` | P0-03 | storage 读写能力 | done |
+| P1-07 | P0 | extension 配置存储实现 | 保存 `bridge_url` / `token`，并持久化 bridge 回传的 `session_id` | P0-03 | storage 读写能力 | done |
 | P1-08 | P0 | extension 设置页实现 | 提供用户可配置 UI | P1-07 | options page | done |
 | P1-09 | P0 | extension 改为远端连接 | 用配置项替代硬编码 `localhost` | P1-07 | 可配置连接能力 | done |
 | P1-10 | P0 | extension 握手协议改造 | 首包带 session/token/version | P1-09, P1-05 | 新握手协议 | done |

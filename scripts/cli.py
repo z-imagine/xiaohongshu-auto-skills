@@ -159,13 +159,21 @@ def _connect(args: argparse.Namespace):
 
 def _resolve_bridge_settings(args: argparse.Namespace) -> tuple[str, str, str]:
     """Resolve bridge connection settings from args and environment."""
-    bridge_url = getattr(args, "bridge_url", os.getenv("XHS_BRIDGE_URL", "ws://localhost:9333"))
+    bridge_url = getattr(args, "bridge_url", os.getenv("XHS_BRIDGE_URL", ""))
     session_id = getattr(
         args,
         "bridge_session_id",
-        os.getenv("XHS_BRIDGE_SESSION_ID", "default"),
+        os.getenv("XHS_BRIDGE_SESSION_ID", ""),
     )
     token = getattr(args, "bridge_token", os.getenv("XHS_BRIDGE_TOKEN", ""))
+    if not bridge_url:
+        raise SystemExit("缺少 bridge_url，请通过 --bridge-url 或 XHS_BRIDGE_URL 指定 bridge 地址")
+    if not token:
+        raise SystemExit("缺少 bridge_token，请通过 --bridge-token 或 XHS_BRIDGE_TOKEN 指定 bridge 鉴权 token")
+    if not session_id:
+        raise SystemExit(
+            "缺少 bridge_session_id，请先让浏览器扩展连接 bridge，并使用扩展展示的 Session ID 作为 --bridge-session-id 或 XHS_BRIDGE_SESSION_ID",
+        )
     return bridge_url, session_id, token
 
 
@@ -765,18 +773,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--bridge-url",
-        default=os.getenv("XHS_BRIDGE_URL", "ws://localhost:9333"),
-        help="Bridge server WebSocket 地址 (default: ws://localhost:9333)",
+        default=os.getenv("XHS_BRIDGE_URL", ""),
+        help="Bridge server WebSocket 地址（必填，可用 XHS_BRIDGE_URL）",
     )
     parser.add_argument(
         "--bridge-session-id",
-        default=os.getenv("XHS_BRIDGE_SESSION_ID", "default"),
-        help="Bridge session 标识 (default: default)",
+        default=os.getenv("XHS_BRIDGE_SESSION_ID", ""),
+        help="目标浏览器的 Session ID（由扩展连接 bridge 后展示）",
     )
     parser.add_argument(
         "--bridge-token",
         default=os.getenv("XHS_BRIDGE_TOKEN", ""),
-        help="Bridge 鉴权 token（默认空）",
+        help="Bridge 鉴权 token（必填，可用 XHS_BRIDGE_TOKEN）",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)

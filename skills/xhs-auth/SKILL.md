@@ -56,10 +56,12 @@ metadata:
 - 所有 CLI 命令位于 `scripts/cli.py`，输出 JSON。
 - 如果使用文件路径，必须使用绝对路径。
 - **不要频繁重复登录或退出登录**，避免触发账号风控。
-- 如使用远端 bridge，命令可补充 `--bridge-url`、`--bridge-session-id`、`--bridge-token`。
+- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
 - 如 bridge 不在本机，不要默认“自动打开本机 Chrome”；应先确认目标浏览器 extension 已连接。
 
 ## 工作流程
+
+以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### 第一步：检查登录状态
 
@@ -150,4 +152,4 @@ python scripts/cli.py delete-cookies
 
 - **验证码错误**：输出包含 `"logged_in": false`，重新运行 `verify-code --code <新验证码>`。
 - **二维码超时**：重新执行 `get-qrcode` 获取新二维码，再运行 `wait-login`。
-- **扩展未连接**：本地 bridge 模式下 CLI 可能自动尝试打开本机 Chrome；远端 bridge 模式下应提示用户检查目标浏览器 extension 的 `bridge_url / session_id / token` 配置。
+- **扩展未连接**：本地 bridge 模式下 CLI 可能自动尝试打开本机 Chrome；远端 bridge 模式下应提示用户检查目标浏览器 extension 的 `bridge_url / token` 配置，并确认 CLI 使用的是扩展展示的 `session_id`。
