@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 
 from .cdp import Page
@@ -22,7 +21,7 @@ from .selectors import (
     TITLE_INPUT,
     UPLOAD_INPUT,
 )
-from .types import PublishVideoContent
+from .types import PublishVideoContent, UploadAsset
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,11 @@ def fill_publish_video_form(page: Page, content: PublishVideoContent) -> None:
         PublishError: 填写失败。
         UploadTimeoutError: 上传/处理超时。
     """
-    if not content.video_path:
+    video_asset = content.video_asset
+    if not video_asset and content.video_path:
+        video_asset = UploadAsset(source_path=content.video_path, name=content.video_path)
+
+    if not video_asset:
         raise PublishError("视频不能为空")
 
     # 导航到发布页
@@ -64,7 +67,7 @@ def fill_publish_video_form(page: Page, content: PublishVideoContent) -> None:
     time.sleep(1)
 
     # 上传视频
-    _upload_video(page, content.video_path)
+    _upload_video(page, video_asset)
 
     # 填写表单（不点击发布）
     _fill_publish_video_form(
@@ -89,14 +92,16 @@ def click_publish_video_button(page: Page) -> None:
     logger.info("视频发布完成")
 
 
-def _upload_video(page: Page, video_path: str) -> None:
+def _upload_video(page: Page, video_asset: UploadAsset) -> None:
     """上传视频文件。"""
-    if not os.path.exists(video_path):
-        raise PublishError(f"视频文件不存在: {video_path}")
-
     # 查找上传输入框
     selector = UPLOAD_INPUT if page.has_element(UPLOAD_INPUT) else FILE_INPUT
-    page.set_file_input(selector, [video_path])
+    if video_asset.source_url:
+        page.set_file_input_from_url(selector, [video_asset.to_bridge_file()])
+    elif video_asset.source_path:
+        page.set_file_input(selector, [video_asset.source_path])
+    else:
+        raise PublishError("视频资源缺少可用来源")
 
     # 等待发布按钮可点击（视频处理完成）
     _wait_for_publish_button_clickable(page)

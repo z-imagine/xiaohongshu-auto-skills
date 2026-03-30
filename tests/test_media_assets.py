@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from media_assets import prepare_image_assets
+from media_assets import prepare_image_assets, prepare_video_asset
 
 
 def test_prepare_image_assets_keeps_remote_url() -> None:
@@ -34,3 +34,9 @@ def test_prepare_image_assets_requires_upload_service_for_remote_bridge(
 
     with pytest.raises(RuntimeError, match="XHS_ASSET_UPLOAD_ENDPOINT"):
         prepare_image_assets([str(image_path)], require_remote=True)
+
+
+def test_prepare_video_asset_uses_remote_url_directly() -> None:
+    asset = prepare_video_asset("https://example.com/assets/demo.mp4", require_remote=True)
+    assert asset.source_url == "https://example.com/assets/demo.mp4"
+    assert asset.name == "demo.mp4"
