@@ -23,6 +23,10 @@
   "background": {
     "service_worker": "background.js"
   },
+  "action": {
+    "default_title": "XHS Bridge",
+    "default_popup": "popup.html"
+  },
   "options_page": "options.html",
   "content_scripts": [
     {

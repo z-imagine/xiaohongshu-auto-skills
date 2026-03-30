@@ -44,7 +44,7 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 
 ### extension
 
-在扩展设置页配置：
+点击扩展图标打开 popup，配置：
 
 - `Bridge URL`
 - `Bridge Token`
@@ -95,7 +95,7 @@ bridge 当前统一返回：
 1. extension 是否已经打开并保存配置
 2. extension 页面展示的 `session_id` 是否和 CLI 使用的一致
 3. token 是否一致
-4. 扩展设置页中的 bridge 地址是否指向正确环境
+4. popup 中的 bridge 地址是否指向正确环境
 
 ### 5.3 bridge 日志有命令超时
 
