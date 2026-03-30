@@ -67,7 +67,13 @@ def fill_publish_form(page: Page, content: PublishImageContent) -> None:
         TitleTooLongError: 标题超长。
         ContentTooLongError: 正文超长。
     """
-    if not content.image_paths:
+    image_assets = content.image_assets or []
+    if not image_assets and content.image_paths:
+        from .types import UploadAsset
+
+        image_assets = [UploadAsset(source_path=path, name=path) for path in content.image_paths]
+
+    if not image_assets:
         raise PublishError("图片不能为空")
 
     # 导航到发布页
@@ -78,7 +84,7 @@ def fill_publish_form(page: Page, content: PublishImageContent) -> None:
     time.sleep(1)
 
     # 上传图片
-    _upload_images(page, content.image_paths)
+    _upload_image_assets(page, image_assets)
 
     # 标签截取
     tags = content.tags[:10] if len(content.tags) > 10 else content.tags
@@ -88,7 +94,7 @@ def fill_publish_form(page: Page, content: PublishImageContent) -> None:
     logger.info(
         "发布内容: title=%s, images=%d, tags=%d, schedule=%s, original=%s, visibility=%s",
         content.title,
-        len(content.image_paths),
+        len(image_assets),
         len(tags),
         content.schedule_time,
         content.is_original,
@@ -265,17 +271,31 @@ def _remove_pop_cover(page: Page) -> None:
 
 def _upload_images(page: Page, image_paths: list[str]) -> None:
     """逐张上传图片。"""
-    import os
+    from .types import UploadAsset
 
-    valid_paths = [p for p in image_paths if os.path.exists(p)]
-    if not valid_paths:
-        raise PublishError("没有有效的图片文件")
+    assets = [UploadAsset(source_path=path, name=path) for path in image_paths]
+    _upload_image_assets(page, assets)
 
-    for i, path in enumerate(valid_paths):
+
+def _upload_image_assets(page: Page, image_assets: list) -> None:
+    """逐张上传图片资源。
+
+    优先走 URL 上传协议；本地兼容模式下仍可回退到原始路径上传。
+    """
+    valid_assets = [asset for asset in image_assets if getattr(asset, "source_path", "") or getattr(asset, "source_url", "")]
+    if not valid_assets:
+        raise PublishError("没有有效的图片资源")
+
+    for i, asset in enumerate(valid_assets):
         selector = UPLOAD_INPUT if i == 0 else FILE_INPUT
-        logger.info("上传第 %d 张图片: %s", i + 1, path)
+        logger.info("上传第 %d 张图片: %s", i + 1, asset.source or asset.name or "-")
 
-        page.set_file_input(selector, [path])
+        if getattr(asset, "source_url", ""):
+            page.set_file_input_from_url(selector, [asset.to_bridge_file()])
+        elif getattr(asset, "source_path", ""):
+            page.set_file_input(selector, [asset.source_path])
+        else:
+            raise PublishError(f"图片资源缺少可用来源: {asset}")
         _wait_for_upload_complete(page, i + 1)
         time.sleep(1)
 

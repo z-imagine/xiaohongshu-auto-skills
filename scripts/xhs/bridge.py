@@ -179,6 +179,10 @@ class BridgePage:
         abs_paths = [os.path.abspath(path) for path in files]
         self._call("set_file_input", {"selector": selector, "files": abs_paths})
 
+    def set_file_input_from_url(self, selector: str, files: list[dict[str, Any]]) -> None:
+        """让 extension 从远端 URL 拉取文件并注入到 file input。"""
+        self._call("set_file_input_from_url", {"selector": selector, "files": files})
+
     # ─── 截图 ────────────────────────────────────────────────────
 
     def screenshot_element(self, selector: str, padding: int = 0) -> bytes:

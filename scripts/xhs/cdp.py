@@ -394,6 +394,33 @@ class Page:
             {"nodeId": node_id, "files": files},
         )
 
+    def set_file_input_from_url(self, selector: str, files: list[dict[str, Any]]) -> None:
+        """兼容 URL 上传协议：先下载到临时文件，再走原有 file input 逻辑。"""
+        import os
+        import tempfile
+
+        import requests
+
+        temp_paths: list[str] = []
+        try:
+            for index, file in enumerate(files):
+                url = str(file.get("url") or "").strip()
+                if not url:
+                    raise CDPError("URL 上传缺少 url 字段")
+                response = requests.get(url, timeout=120)
+                response.raise_for_status()
+                suffix = os.path.splitext(str(file.get("name") or f"asset-{index}"))[1] or ".bin"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as fh:
+                    fh.write(response.content)
+                    temp_paths.append(fh.name)
+            self.set_file_input(selector, temp_paths)
+        finally:
+            for path in temp_paths:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
     def dispatch_wheel_event(self, delta_y: float) -> None:
         """触发滚轮事件以激活懒加载。"""
         self.evaluate(

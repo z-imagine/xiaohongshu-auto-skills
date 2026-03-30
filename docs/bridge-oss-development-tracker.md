@@ -122,15 +122,15 @@ xiaohongshu-auto-skills/
 
 | ID | 优先级 | 任务 | 说明 | 依赖 | 产出 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| P2-01 | P0 | 定义图文上传命令协议 | 确定 `set_file_input_from_url` 参数结构 | P0-04, P0-07 | 协议定稿 | todo |
-| P2-02 | P0 | extension 实现 URL 文件拉取 | `fetch -> Blob -> File -> DataTransfer` | P2-01 | URL 上传能力 | todo |
-| P2-03 | P0 | extension 实现多图上传 | 支持一次上传多图片 | P2-02 | 多图上传能力 | todo |
-| P2-04 | P0 | `BridgePage` 增加 URL 上传接口 | 增加新的 page 方法供发布模块调用 | P2-01 | bridge client 新接口 | todo |
-| P2-05 | P0 | 服务端 OSS 上传封装 | 发布前上传图片并生成签名 URL | P0-07 | OSS 上传模块 | todo |
-| P2-06 | P0 | `publish.py` 图文上传改造 | 从本地路径方案切换到 URL 方案 | P2-04, P2-05 | 图文发布新链路 | todo |
-| P2-07 | P1 | `image_downloader.py` 职责重构 | 从本地落盘导向改为上传前预处理导向 | P2-05 | 模块职责重定义 | todo |
-| P2-08 | P0 | 图文发布集成测试 | 单图、多图、URL 图片、失败回滚 | P2-06 | 测试记录 | todo |
-| P2-09 | P1 | OSS 延迟清理任务 | 发布后异步清理临时对象 | P2-05 | 清理任务 | todo |
+| P2-01 | P0 | 定义图文上传命令协议 | 确定 `set_file_input_from_url` 参数结构 | P0-04, P0-07 | 协议定稿 | done |
+| P2-02 | P0 | extension 实现 URL 文件拉取 | `fetch -> Blob -> File -> DataTransfer` | P2-01 | URL 上传能力 | done |
+| P2-03 | P0 | extension 实现多图上传 | 支持一次上传多图片 | P2-02 | 多图上传能力 | done |
+| P2-04 | P0 | `BridgePage` 增加 URL 上传接口 | 增加新的 page 方法供发布模块调用 | P2-01 | bridge client 新接口 | done |
+| P2-05 | P0 | 服务端 OSS 上传封装 | 发布前上传图片并生成签名 URL | P0-07 | OSS 上传模块 | done |
+| P2-06 | P0 | `publish.py` 图文上传改造 | 从本地路径方案切换到 URL 方案 | P2-04, P2-05 | 图文发布新链路 | done |
+| P2-07 | P1 | `image_downloader.py` 职责重构 | 从本地落盘导向改为上传前预处理导向 | P2-05 | 模块职责重定义 | done |
+| P2-08 | P0 | 图文发布集成测试 | 单图、多图、URL 图片、失败回滚 | P2-06 | 测试记录 | done |
+| P2-09 | P1 | OSS 延迟清理任务 | 发布后异步清理临时对象 | P2-05 | 清理任务 | blocked |
 
 ### 阶段验收
 
