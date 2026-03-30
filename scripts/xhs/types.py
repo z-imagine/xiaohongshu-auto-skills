@@ -418,9 +418,33 @@ class PublishImageContent:
     content: str = ""
     tags: list[str] = field(default_factory=list)
     image_paths: list[str] = field(default_factory=list)
+    image_assets: list[UploadAsset] = field(default_factory=list)
     schedule_time: str | None = None  # ISO8601 格式，None 表示立即发布
     is_original: bool = False
     visibility: str = ""  # 公开可见(默认)|仅自己可见|仅互关好友可见
+
+
+@dataclass
+class UploadAsset:
+    """Temporary asset metadata used for bridge-based uploads."""
+
+    name: str = ""
+    source_path: str = ""
+    source_url: str = ""
+    content_type: str = ""
+    size: int = 0
+    sha256: str = ""
+    source: str = ""
+
+    def to_bridge_file(self) -> dict:
+        """Serialize to the file structure expected by the extension."""
+        return {
+            "url": self.source_url,
+            "name": self.name,
+            "type": self.content_type,
+            "size": self.size,
+            "sha256": self.sha256,
+        }
 
 
 @dataclass

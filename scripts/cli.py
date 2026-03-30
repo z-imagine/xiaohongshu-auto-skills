@@ -152,6 +152,13 @@ def _connect(args: argparse.Namespace):
     """返回 (browser, page)，browser 为空对象，page 通过 Extension Bridge 操作浏览器。"""
     from xhs.bridge import BridgePage
 
+    bridge_url, session_id, token = _resolve_bridge_settings(args)
+    _ensure_bridge_ready(bridge_url, session_id, token)
+    return _DummyBrowser(), BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
+
+
+def _resolve_bridge_settings(args: argparse.Namespace) -> tuple[str, str, str]:
+    """Resolve bridge connection settings from args and environment."""
     bridge_url = getattr(args, "bridge_url", os.getenv("XHS_BRIDGE_URL", "ws://localhost:9333"))
     session_id = getattr(
         args,
@@ -159,8 +166,7 @@ def _connect(args: argparse.Namespace):
         os.getenv("XHS_BRIDGE_SESSION_ID", "default"),
     )
     token = getattr(args, "bridge_token", os.getenv("XHS_BRIDGE_TOKEN", ""))
-    _ensure_bridge_ready(bridge_url, session_id, token)
-    return _DummyBrowser(), BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
+    return bridge_url, session_id, token
 
 
 # _connect_saved_tab / _connect_existing 在 bridge 模式下与 _connect 等价
@@ -519,7 +525,7 @@ def cmd_favorite_feed(args: argparse.Namespace) -> None:
 
 def cmd_publish(args: argparse.Namespace) -> None:
     """发布图文内容。"""
-    from image_downloader import process_images
+    from media_assets import prepare_image_assets
     from xhs.publish import publish_image_content
     from xhs.types import PublishImageContent
 
@@ -528,9 +534,13 @@ def cmd_publish(args: argparse.Namespace) -> None:
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
 
-    image_paths = process_images(args.images) if args.images else []
-    if not image_paths:
-        _output({"success": False, "error": "没有有效的图片"}, exit_code=2)
+    bridge_url, _session_id, _token = _resolve_bridge_settings(args)
+    image_assets = prepare_image_assets(
+        args.images or [],
+        require_remote=not _is_local_bridge(bridge_url),
+    )
+    if not image_assets:
+        _output({"success": False, "error": "没有有效的图片资源"}, exit_code=2)
 
     browser, page = _connect(args)
     try:
@@ -540,20 +550,20 @@ def cmd_publish(args: argparse.Namespace) -> None:
                 title=title,
                 content=content,
                 tags=args.tags or [],
-                image_paths=image_paths,
+                image_assets=image_assets,
                 schedule_time=args.schedule_at,
                 is_original=args.original,
                 visibility=args.visibility or "",
             ),
         )
-        _output({"success": True, "title": title, "images": len(image_paths), "status": "发布完成"})
+        _output({"success": True, "title": title, "images": len(image_assets), "status": "发布完成"})
     finally:
         browser.close()
 
 
 def cmd_fill_publish(args: argparse.Namespace) -> None:
     """只填写图文表单，不发布。"""
-    from image_downloader import process_images
+    from media_assets import prepare_image_assets
     from xhs.publish import fill_publish_form
     from xhs.types import PublishImageContent
 
@@ -562,9 +572,13 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
 
-    image_paths = process_images(args.images) if args.images else []
-    if not image_paths:
-        _output({"success": False, "error": "没有有效的图片"}, exit_code=2)
+    bridge_url, _session_id, _token = _resolve_bridge_settings(args)
+    image_assets = prepare_image_assets(
+        args.images or [],
+        require_remote=not _is_local_bridge(bridge_url),
+    )
+    if not image_assets:
+        _output({"success": False, "error": "没有有效的图片资源"}, exit_code=2)
 
     browser, page = _connect(args)
     try:
@@ -574,13 +588,13 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
                 title=title,
                 content=content,
                 tags=args.tags or [],
-                image_paths=image_paths,
+                image_assets=image_assets,
                 schedule_time=args.schedule_at,
                 is_original=args.original,
                 visibility=args.visibility or "",
             ),
         )
-        _output({"success": True, "title": title, "images": len(image_paths), "status": "表单已填写，等待确认发布"})
+        _output({"success": True, "title": title, "images": len(image_assets), "status": "表单已填写，等待确认发布"})
     finally:
         browser.close()
 

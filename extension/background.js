@@ -125,6 +125,9 @@ async function handleCommand(msg) {
     case "set_file_input":
       return await cmdSetFileInputViaDebugger(params);
 
+    case "set_file_input_from_url":
+      return await cmdSetFileInputFromUrl(params);
+
     // ── Cookies ──
     case "get_cookies":
       return await cmdGetCookies(params);
@@ -337,6 +340,60 @@ async function cmdSetFileInputViaDebugger({ selector, files }) {
     await chrome.debugger.detach(target).catch(() => {});
   }
   return null;
+}
+
+async function cmdSetFileInputFromUrl({ selector, files }) {
+  const preparedFiles = await Promise.all((files || []).map((file, index) => fetchBridgeFile(file, index)));
+  return await cmdDomInMainWorld("set_file_input", {
+    selector,
+    files: preparedFiles,
+  });
+}
+
+async function fetchBridgeFile(file, index) {
+  const response = await fetch(file.url, { credentials: "omit" });
+  if (!response.ok) {
+    throw new Error(`资源下载失败 (${response.status}): ${file.url}`);
+  }
+
+  const type = file.type || response.headers.get("content-type") || "application/octet-stream";
+  const buffer = await response.arrayBuffer();
+  return {
+    name: file.name || inferFileName(file.url, index, type),
+    type,
+    data: arrayBufferToBase64(buffer),
+  };
+}
+
+function inferFileName(url, index, type) {
+  try {
+    const pathname = new URL(url).pathname || "";
+    const name = pathname.split("/").pop();
+    if (name) return name;
+  } catch (e) {}
+  const ext = guessExtension(type);
+  return `asset-${index + 1}${ext}`;
+}
+
+function guessExtension(type) {
+  const map = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+  };
+  return map[type] || ".bin";
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 // ───────────────────────── DOM 操作（MAIN world） ────────────────────
