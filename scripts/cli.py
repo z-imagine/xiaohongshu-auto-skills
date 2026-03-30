@@ -601,6 +601,7 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
 
 def cmd_fill_publish_video(args: argparse.Namespace) -> None:
     """只填写视频表单，不发布。"""
+    from media_assets import prepare_video_asset
     from xhs.publish_video import fill_publish_video_form
     from xhs.types import PublishVideoContent
 
@@ -608,6 +609,12 @@ def cmd_fill_publish_video(args: argparse.Namespace) -> None:
         title = f.read().strip()
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
+
+    bridge_url, _session_id, _token = _resolve_bridge_settings(args)
+    video_asset = prepare_video_asset(
+        args.video,
+        require_remote=not _is_local_bridge(bridge_url),
+    )
 
     browser, page = _connect(args)
     try:
@@ -618,6 +625,7 @@ def cmd_fill_publish_video(args: argparse.Namespace) -> None:
                 content=content,
                 tags=args.tags or [],
                 video_path=args.video,
+                video_asset=video_asset,
                 schedule_time=args.schedule_at,
                 visibility=args.visibility or "",
             ),
@@ -653,12 +661,19 @@ def cmd_save_draft(args: argparse.Namespace) -> None:
 
 def cmd_long_article(args: argparse.Namespace) -> None:
     """长文模式：填写内容 + 一键排版，返回模板列表。"""
+    from media_assets import prepare_image_assets
     from xhs.publish_long_article import publish_long_article
 
     with open(args.title_file, encoding="utf-8") as f:
         title = f.read().strip()
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
+
+    bridge_url, _session_id, _token = _resolve_bridge_settings(args)
+    image_assets = prepare_image_assets(
+        args.images or [],
+        require_remote=not _is_local_bridge(bridge_url),
+    )
 
     browser, page = _connect(args)
     try:
@@ -667,6 +682,7 @@ def cmd_long_article(args: argparse.Namespace) -> None:
             title=title,
             content=content,
             image_paths=args.images,
+            image_assets=image_assets,
         )
         _output({"success": True, "templates": template_names, "status": "长文已填写，请选择模板"})
     finally:
@@ -705,6 +721,7 @@ def cmd_next_step(args: argparse.Namespace) -> None:
 
 def cmd_publish_video(args: argparse.Namespace) -> None:
     """发布视频内容。"""
+    from media_assets import prepare_video_asset
     from xhs.publish_video import publish_video_content
     from xhs.types import PublishVideoContent
 
@@ -712,6 +729,12 @@ def cmd_publish_video(args: argparse.Namespace) -> None:
         title = f.read().strip()
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
+
+    bridge_url, _session_id, _token = _resolve_bridge_settings(args)
+    video_asset = prepare_video_asset(
+        args.video,
+        require_remote=not _is_local_bridge(bridge_url),
+    )
 
     browser, page = _connect(args)
     try:
@@ -722,6 +745,7 @@ def cmd_publish_video(args: argparse.Namespace) -> None:
                 content=content,
                 tags=args.tags or [],
                 video_path=args.video,
+                video_asset=video_asset,
                 schedule_time=args.schedule_at,
                 visibility=args.visibility or "",
             ),

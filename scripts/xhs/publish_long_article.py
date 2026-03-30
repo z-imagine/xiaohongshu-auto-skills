@@ -19,6 +19,7 @@ from .selectors import (
     TEMPLATE_CARD,
     TEMPLATE_TITLE,
 )
+from .types import UploadAsset
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ def publish_long_article(
     title: str,
     content: str,
     image_paths: list[str] | None = None,
+    image_assets: list[UploadAsset] | None = None,
 ) -> list[str]:
     """长文发布：导航 → 点击写长文 → 新的创作 → 填写标题正文 → 一键排版。
 
@@ -43,6 +45,7 @@ def publish_long_article(
         title: 长文标题。
         content: 长文正文（段落用换行分隔）。
         image_paths: 可选的图片路径列表（插入编辑器）。
+        image_assets: 预处理后的图片资源列表。
 
     Returns:
         可用模板名称列表。
@@ -67,8 +70,11 @@ def publish_long_article(
     _fill_long_content(page, content)
 
     # 6. 可选：插入图片到编辑器
-    if image_paths:
-        _insert_images_to_editor(page, image_paths)
+    assets = image_assets or []
+    if not assets and image_paths:
+        assets = [UploadAsset(source_path=path, name=path) for path in image_paths]
+    if assets:
+        _insert_images_to_editor(page, assets)
 
     # 7. 点击"一键排版"
     _click_auto_format(page)
@@ -215,24 +221,28 @@ def _fill_long_content(page: Page, content: str) -> None:
     time.sleep(1)
 
 
-def _insert_images_to_editor(page: Page, image_paths: list[str]) -> None:
+def _insert_images_to_editor(page: Page, image_assets: list[UploadAsset]) -> None:
     """将图片插入到编辑器中。"""
-    for img_path in image_paths:
-        file_uri = Path(img_path).resolve().as_uri()
+    for asset in image_assets:
+        image_src = asset.source_url
+        if not image_src and asset.source_path:
+            image_src = Path(asset.source_path).resolve().as_uri()
+        if not image_src:
+            raise PublishError(f"图片资源缺少可用来源: {asset}")
         page.evaluate(
             f"""
             (() => {{
                 const editor = document.querySelector({json.dumps(CONTENT_EDITOR)});
                 if (!editor) return false;
                 const img = document.createElement('img');
-                img.src = {json.dumps(file_uri)};
+                img.src = {json.dumps(image_src)};
                 editor.appendChild(img);
                 editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 return true;
             }})()
             """
         )
-    logger.info("已插入 %d 张图片到编辑器", len(image_paths))
+    logger.info("已插入 %d 张图片到编辑器", len(image_assets))
     time.sleep(1)
 
 

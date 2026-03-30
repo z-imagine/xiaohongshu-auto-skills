@@ -34,10 +34,10 @@ class TempAssetUploader:
         """Whether a remote asset upload endpoint is available."""
         return bool(self._endpoint)
 
-    def upload_file(self, path: str) -> UploadAsset:
+    def upload_file(self, path: str, purpose: str = "xhs-publish-asset") -> UploadAsset:
         """Upload a local file and return the resulting temporary asset."""
         if not self.is_configured:
-            raise RuntimeError("未配置 XHS_ASSET_UPLOAD_ENDPOINT，无法上传本地图片到临时存储")
+            raise RuntimeError("未配置 XHS_ASSET_UPLOAD_ENDPOINT，无法上传本地文件到临时存储")
 
         resolved = Path(path).resolve()
         content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
@@ -50,7 +50,7 @@ class TempAssetUploader:
                 self._endpoint,
                 headers=headers,
                 files={"file": (resolved.name, fh, content_type)},
-                data={"purpose": "xhs-publish-image"},
+                data={"purpose": purpose},
                 timeout=self._timeout,
             )
         response.raise_for_status()
@@ -75,8 +75,12 @@ class TempAssetUploader:
         )
 
 
-def prepare_image_assets(images: list[str], require_remote: bool = False) -> list[UploadAsset]:
-    """Prepare image inputs for publish flows.
+def prepare_upload_assets(
+    files: list[str],
+    require_remote: bool = False,
+    purpose: str = "xhs-publish-asset",
+) -> list[UploadAsset]:
+    """Prepare file inputs for publish flows.
 
     Rules:
     - Existing remote URLs are passed through as temporary assets.
@@ -86,31 +90,52 @@ def prepare_image_assets(images: list[str], require_remote: bool = False) -> lis
     uploader = TempAssetUploader()
     assets: list[UploadAsset] = []
 
-    for image in images:
-        if is_remote_url(image):
-            assets.append(_build_remote_asset(image))
+    for file_path in files:
+        if is_remote_url(file_path):
+            assets.append(_build_remote_asset(file_path))
             continue
 
-        if not os.path.exists(image):
+        if not os.path.exists(file_path):
             continue
 
         if require_remote:
             if not uploader.is_configured:
                 raise RuntimeError(
-                    "当前 bridge 为远端模式，本地图片必须先上传到临时存储。"
-                    "请配置 XHS_ASSET_UPLOAD_ENDPOINT，或直接传入可访问图片 URL。"
+                    "当前 bridge 为远端模式，本地文件必须先上传到临时存储。"
+                    "请配置 XHS_ASSET_UPLOAD_ENDPOINT，或直接传入可访问文件 URL。"
                 )
-            assets.append(uploader.upload_file(image))
+            assets.append(uploader.upload_file(file_path, purpose=purpose))
             continue
 
         if uploader.is_configured:
-            assets.append(uploader.upload_file(image))
+            assets.append(uploader.upload_file(file_path, purpose=purpose))
             continue
 
-        resolved = str(Path(image).resolve())
+        resolved = str(Path(file_path).resolve())
         assets.append(_build_local_asset(resolved))
 
     return assets
+
+
+def prepare_image_assets(images: list[str], require_remote: bool = False) -> list[UploadAsset]:
+    """Prepare image assets for image publish flows."""
+    return prepare_upload_assets(
+        images,
+        require_remote=require_remote,
+        purpose="xhs-publish-image",
+    )
+
+
+def prepare_video_asset(video: str, require_remote: bool = False) -> UploadAsset:
+    """Prepare a single video asset for publish flows."""
+    assets = prepare_upload_assets(
+        [video],
+        require_remote=require_remote,
+        purpose="xhs-publish-video",
+    )
+    if not assets:
+        raise RuntimeError("没有有效的视频资源")
+    return assets[0]
 
 
 def _build_remote_asset(url: str) -> UploadAsset:
@@ -144,4 +169,3 @@ def _sha256_of_file(path: str) -> str:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             sha.update(chunk)
     return sha.hexdigest()
-
