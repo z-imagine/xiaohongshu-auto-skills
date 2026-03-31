@@ -65,8 +65,6 @@ uv run python -m bridge.server --host 0.0.0.0 --port 9333 --token "<bridge-token
 Docker 入口：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填入 XHS_BRIDGE_TOKEN
 docker compose up -d --build
 ```
 
@@ -100,8 +98,6 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 最小启动方式：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填入 XHS_BRIDGE_TOKEN
 docker compose up -d --build
 ```
 
@@ -112,8 +108,6 @@ cp .env.example .env
 # 编辑本地 .env，填入 DEPLOY_*
 ./deploy_bridge_docker.sh
 ```
-
-首次远端部署时，如果目标目录里还没有 `.env`，脚本会在远端生成一份模板并退出。此时需要登录远端服务器，在部署目录里补上 `XHS_BRIDGE_TOKEN`，再重新执行一次部署。
 
 查看日志：
 
