@@ -109,6 +109,13 @@ cp .env.example .env
 ./deploy_bridge_docker.sh
 ```
 
+远端目录结构约定为：
+
+- `DEPLOY_REMOTE_DIR/runtime`：当前运行目录
+- `DEPLOY_REMOTE_DIR/backups`：每次部署前的代码备份目录
+
+脚本在二次部署时会先把当前 `runtime` 目录压缩到 `backups/runtime-时间戳.tar.gz`，再清空 `runtime` 并解压新包。
+
 查看日志：
 
 ```bash
@@ -121,11 +128,7 @@ docker compose logs -f xhs-bridge
 docker compose down
 ```
 
-### 服务端环境变量
-
-```bash
-export XHS_BRIDGE_TOKEN=<bridge-token>
-```
+当前 Docker 方式下，bridge 运行配置以远端 [docker-compose.yml](/Users/samuel/Projects/SkillProjects/xiaohongshu-auto-skills/docker-compose.yml) 为准。
 
 ## 5. extension 安装与配置
 

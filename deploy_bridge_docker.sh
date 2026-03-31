@@ -61,6 +61,9 @@ if [[ -z "${REMOTE_DIR}" ]]; then
   exit 1
 fi
 
+REMOTE_RUNTIME_DIR="${REMOTE_DIR}/runtime"
+REMOTE_BACKUP_DIR="${REMOTE_DIR}/backups"
+
 mkdir -p "${STAGING_DIR}/bridge" "${DEPLOY_BASE_DIR}"
 
 cp "${ROOT_DIR}/Dockerfile" "${STAGING_DIR}/"
@@ -86,17 +89,24 @@ ARTIFACT_NAME="$(basename "${ARTIFACT_PATH}")"
 echo "==> 打包完成: ${ARTIFACT_PATH}"
 echo "==> 上传到: ${SSH_TARGET}:${REMOTE_DIR}/${ARTIFACT_NAME}"
 
-ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "mkdir -p '${REMOTE_DIR}'"
+ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "mkdir -p '${REMOTE_DIR}' '${REMOTE_RUNTIME_DIR}' '${REMOTE_BACKUP_DIR}'"
 scp "${SCP_OPTS[@]}" "${ARTIFACT_PATH}" "${SSH_TARGET}:${REMOTE_DIR}/${ARTIFACT_NAME}"
 
 ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "
   set -euo pipefail
   cd '${REMOTE_DIR}'
-  tar -xzf '${ARTIFACT_NAME}'
+  if find '${REMOTE_RUNTIME_DIR}' -mindepth 1 -print -quit | grep -q .; then
+    tar -C '${REMOTE_RUNTIME_DIR}' -czf '${REMOTE_BACKUP_DIR}/runtime-${TIMESTAMP}.tar.gz' .
+  fi
+  find '${REMOTE_RUNTIME_DIR}' -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  tar -xzf '${ARTIFACT_NAME}' -C '${REMOTE_RUNTIME_DIR}'
   rm -f '${ARTIFACT_NAME}'
+  cd '${REMOTE_RUNTIME_DIR}'
   docker compose up -d --build
   docker compose ps
 "
 
 echo "==> 部署完成"
-echo "==> 远端目录: ${REMOTE_DIR}"
+echo "==> 远端根目录: ${REMOTE_DIR}"
+echo "==> 运行目录: ${REMOTE_RUNTIME_DIR}"
+echo "==> 备份目录: ${REMOTE_BACKUP_DIR}"
