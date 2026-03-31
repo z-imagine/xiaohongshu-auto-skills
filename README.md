@@ -91,6 +91,11 @@ cp .env.example .env
 ./deploy_bridge_docker.sh
 ```
 
+远端目录会固定拆成：
+
+- `DEPLOY_REMOTE_DIR/runtime`：当前运行中的 bridge 代码与 Docker 文件
+- `DEPLOY_REMOTE_DIR/backups`：每次部署前对 `runtime` 的代码压缩备份
+
 ## 使用方式
 
 ### 作为 AI Agent 技能使用（推荐）
