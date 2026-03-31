@@ -141,12 +141,22 @@ def _apply_filters(page: Page, filters: list[tuple[int, int]]) -> None:
         if page.has_element(FILTER_PANEL):
             break
         sleep_random(300, 600)
+    else:
+        # 页面偶发 hover 未拉起面板时，再尝试点开一次。
+        page.click_element(FILTER_BUTTON)
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            if page.has_element(FILTER_PANEL):
+                break
+            sleep_random(300, 600)
+        else:
+            raise ValueError("筛选面板未出现，无法应用高级筛选条件")
 
     # 点击各筛选项
     for filters_index, tags_index in filters:
         selector = (
             f"div.filter-panel div.filters:nth-child({filters_index}) "
-            f"div.tags:nth-child({tags_index})"
+            f".tag-container .tags:nth-child({tags_index})"
         )
         page.click_element(selector)
         sleep_random(300, 600)
