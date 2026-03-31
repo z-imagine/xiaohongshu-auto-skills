@@ -62,6 +62,12 @@ bridge 正式入口：
 uv run python -m bridge.server --host 0.0.0.0 --port 9333 --token "<bridge-token>"
 ```
 
+Docker 入口：
+
+```bash
+docker compose up -d --build
+```
+
 兼容入口：
 
 ```bash
@@ -73,6 +79,40 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 - 外层使用 Nginx / Caddy 做 WebSocket 反向代理
 - 对外暴露时优先使用 `wss://`
 - 每个环境使用单独 token
+
+### Docker 部署
+
+项目根目录已提供：
+
+- `Dockerfile`
+- `docker-compose.yml`
+
+最小启动方式：
+
+```bash
+export XHS_BRIDGE_TOKEN=<bridge-token>
+docker compose up -d --build
+```
+
+查看日志：
+
+```bash
+docker compose logs -f xhs-bridge
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
+默认暴露端口为 `9333`，如需修改可在启动前覆盖：
+
+```bash
+export XHS_BRIDGE_PORT=19333
+export XHS_BRIDGE_TOKEN=<bridge-token>
+docker compose up -d --build
+```
 
 ### 服务端环境变量
 

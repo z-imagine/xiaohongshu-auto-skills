@@ -69,6 +69,21 @@ uv sync
 
 安装完成后即可使用 — 所有操作都发生在你自己的浏览器里，使用你的真实账号和浏览器环境。
 
+### bridge Docker 部署
+
+如果你希望把 bridge 部署到远程服务器，项目根目录已经提供 `Dockerfile` 和 `docker-compose.yml`：
+
+```bash
+export XHS_BRIDGE_TOKEN=<bridge-token>
+docker compose up -d --build
+```
+
+默认监听 `9333` 端口。查看日志：
+
+```bash
+docker compose logs -f xhs-bridge
+```
+
 ## 使用方式
 
 ### 作为 AI Agent 技能使用（推荐）

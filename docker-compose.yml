@@ -1,0 +1,13 @@
+services:
+  xhs-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xhs-bridge
+    restart: unless-stopped
+    environment:
+      XHS_BRIDGE_HOST: 0.0.0.0
+      XHS_BRIDGE_PORT: 9333
+      XHS_BRIDGE_TOKEN: mytoken
+    ports:
+      - "${XHS_BRIDGE_PORT:-9333}:9333"
