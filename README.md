@@ -74,7 +74,8 @@ uv sync
 如果你希望把 bridge 部署到远程服务器，项目根目录已经提供 `Dockerfile` 和 `docker-compose.yml`：
 
 ```bash
-export XHS_BRIDGE_TOKEN=<bridge-token>
+cp .env.example .env
+# 编辑 .env，填入 XHS_BRIDGE_TOKEN
 docker compose up -d --build
 ```
 
@@ -83,6 +84,16 @@ docker compose up -d --build
 ```bash
 docker compose logs -f xhs-bridge
 ```
+
+如果你希望本地打包后通过 `ssh` 上传到远端服务器并自动部署，也可以直接使用：
+
+```bash
+cp .env.example .env
+# 编辑本地 .env，填入 DEPLOY_*
+./deploy_bridge_docker.sh
+```
+
+首次远端部署时，如果目标目录里还没有 `.env`，脚本会在远端生成一份模板并退出。你需要登录远端服务器，在部署目录里补上 `XHS_BRIDGE_TOKEN` 后，再重新执行一次部署。
 
 ## 使用方式
 

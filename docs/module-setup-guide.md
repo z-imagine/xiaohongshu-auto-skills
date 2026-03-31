@@ -65,7 +65,17 @@ uv run python -m bridge.server --host 0.0.0.0 --port 9333 --token "<bridge-token
 Docker 入口：
 
 ```bash
+cp .env.example .env
+# 编辑 .env，填入 XHS_BRIDGE_TOKEN
 docker compose up -d --build
+```
+
+远端部署脚本：
+
+```bash
+cp .env.example .env
+# 编辑本地 .env，填入 DEPLOY_*
+./deploy_bridge_docker.sh
 ```
 
 兼容入口：
@@ -90,9 +100,20 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 最小启动方式：
 
 ```bash
-export XHS_BRIDGE_TOKEN=<bridge-token>
+cp .env.example .env
+# 编辑 .env，填入 XHS_BRIDGE_TOKEN
 docker compose up -d --build
 ```
+
+如果你本地有 `ssh` / `scp`，也可以直接用仓库自带脚本打包上传并远端启动：
+
+```bash
+cp .env.example .env
+# 编辑本地 .env，填入 DEPLOY_*
+./deploy_bridge_docker.sh
+```
+
+首次远端部署时，如果目标目录里还没有 `.env`，脚本会在远端生成一份模板并退出。此时需要登录远端服务器，在部署目录里补上 `XHS_BRIDGE_TOKEN`，再重新执行一次部署。
 
 查看日志：
 
@@ -106,19 +127,9 @@ docker compose logs -f xhs-bridge
 docker compose down
 ```
 
-默认暴露端口为 `9333`，如需修改可在启动前覆盖：
-
-```bash
-export XHS_BRIDGE_PORT=19333
-export XHS_BRIDGE_TOKEN=<bridge-token>
-docker compose up -d --build
-```
-
 ### 服务端环境变量
 
 ```bash
-export XHS_BRIDGE_HOST=0.0.0.0
-export XHS_BRIDGE_PORT=9333
 export XHS_BRIDGE_TOKEN=<bridge-token>
 ```
 
