@@ -94,11 +94,6 @@ ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "
   cd '${REMOTE_DIR}'
   tar -xzf '${ARTIFACT_NAME}'
   rm -f '${ARTIFACT_NAME}'
-  if [ ! -f .env ]; then
-    cp .env.example .env
-    echo '未发现远端 .env，已创建模板。请先编辑 ${REMOTE_DIR}/.env 再重新执行部署。' >&2
-    exit 1
-  fi
   docker compose up -d --build
   docker compose ps
 "
