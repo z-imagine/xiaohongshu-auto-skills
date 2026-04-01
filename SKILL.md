@@ -49,6 +49,7 @@ metadata:
 - 文件路径必须使用绝对路径。
 - 所有 bridge 模式命令都必须提供 `--bridge-url`、`--bridge-token`。
 - `--bridge-session-id` 必须使用浏览器 extension 连接 bridge 后展示的 Session ID。
+- 执行任何 bridge 模式命令前，必须先确认 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 或等价命令行参数已齐全；缺少任一项时，不要执行命令，先明确提示用户补齐。
 - 发布图文、视频、长文插图时，如果输入的是本地文件且 bridge 为远端模式，必须已配置临时资源服务，或直接提供可访问媒体 URL。
 - CLI 输出为 JSON 格式，结构化呈现给用户。
 - 操作频率不宜过高，保持合理间隔。
