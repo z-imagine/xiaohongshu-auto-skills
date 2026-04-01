@@ -57,6 +57,7 @@ metadata:
 - 如果使用文件路径，必须使用绝对路径。
 - **不要频繁重复登录或退出登录**，避免触发账号风控。
 - 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
+- 执行命令前必须先检查 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 或等价命令行参数是否齐全；缺少任一项时，先提示用户补齐，不要直接执行。
 - 如 bridge 不在本机，不要默认“自动打开本机 Chrome”；应先确认目标浏览器 extension 已连接。
 
 ## 工作流程

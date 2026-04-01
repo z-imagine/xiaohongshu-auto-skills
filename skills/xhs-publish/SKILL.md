@@ -60,6 +60,7 @@ metadata:
 - **发布前必须让用户确认最终标题、正文和图片/视频**。
 - **推荐使用分步发布**：先 fill → 用户确认 → 再 click-publish。
 - 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
+- 执行命令前必须先检查 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 或等价命令行参数是否齐全；缺少任一项时，先提示用户补齐，不要直接执行。
 - 远端 bridge 场景下，媒体输入优先使用可访问的 HTTP/HTTPS URL；若用户提供的是本地路径，则必须已配置临时资源服务。
 - 图文发布时，没有图片不得发布。
 - 视频发布时，没有视频不得发布。图片和视频不可混合（二选一）。
