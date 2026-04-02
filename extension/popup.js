@@ -66,13 +66,16 @@ form.addEventListener("submit", async (event) => {
   }
 
   const current = await chrome.storage.local.get(DEFAULT_SETTINGS);
-  const keepSessionId = current.bridgeUrl === bridgeUrl && current.bridgeToken === bridgeToken;
   await chrome.storage.local.set({
     bridgeUrl,
     bridgeToken,
-    sessionId: keepSessionId ? (current.sessionId || "") : "",
+    sessionId: current.sessionId || "",
   });
-  setFormStatus(keepSessionId ? "配置已保存，扩展正在重连。" : "配置已保存，扩展将申请新的 Session ID。");
+  setFormStatus(
+    current.sessionId
+      ? "配置已保存，扩展正在重连，并继续使用当前 Session ID。"
+      : "配置已保存，扩展将申请新的 Session ID。",
+  );
 });
 
 reconnectBtn.addEventListener("click", async () => {
