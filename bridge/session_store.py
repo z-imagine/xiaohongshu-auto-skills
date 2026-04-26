@@ -5,18 +5,21 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime
+from typing import Protocol
 from typing import Any
 
-from websockets.server import ServerConnection
-
 from .models import SessionState
+
+
+class BridgeSocket(Protocol):
+    async def send(self, raw: str) -> None: ...
 
 
 class SessionStore:
     """Keeps track of extension sessions and in-flight CLI requests."""
 
     def __init__(self) -> None:
-        self._extensions: dict[str, ServerConnection] = {}
+        self._extensions: dict[str, BridgeSocket] = {}
         self._pending: dict[str, tuple[str, asyncio.Future[Any]]] = {}
         self._session_meta: dict[str, SessionState] = {}
 
@@ -37,7 +40,7 @@ class SessionStore:
     def register_extension(
         self,
         session_id: str,
-        ws: ServerConnection,
+        ws: BridgeSocket,
         extension_version: str = "",
     ) -> None:
         self._extensions[session_id] = ws
@@ -50,7 +53,7 @@ class SessionStore:
         state.last_error = ""
         self._session_meta[session_id] = state
 
-    def unregister_extension(self, session_id: str, ws: ServerConnection) -> None:
+    def unregister_extension(self, session_id: str, ws: BridgeSocket) -> None:
         current = self._extensions.get(session_id)
         if current is ws:
             self._extensions.pop(session_id, None)
@@ -68,7 +71,7 @@ class SessionStore:
     def has_any_extension(self) -> bool:
         return bool(self._extensions)
 
-    def get_extension(self, session_id: str) -> ServerConnection | None:
+    def get_extension(self, session_id: str) -> BridgeSocket | None:
         return self._extensions.get(session_id)
 
     def touch_session(self, session_id: str, heartbeat: bool = False) -> None:

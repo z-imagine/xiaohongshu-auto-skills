@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 
+from aiohttp.test_utils import TestClient, TestServer
+
 from bridge.auth import is_token_allowed
 from bridge.router import BridgeRouter
+from bridge.server import create_app
 
 
 class FakeSocket:
@@ -125,6 +128,58 @@ def test_get_session_state_returns_structured_snapshot() -> None:
         assert result["connected"] is True
         assert result["last_method"] == "navigate"
         assert result["connect_count"] == 1
+
+    asyncio.run(scenario())
+
+
+def test_http_rpc_ping_server_matches_ws_shape() -> None:
+    async def scenario() -> None:
+        router = BridgeRouter(token="secret")
+        router._sessions.register_extension("session-a", FakeSocket(), "1.0.0")
+        client = TestClient(TestServer(create_app(router)))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/rpc",
+                json={
+                    "method": "ping_server",
+                    "session_id": "session-a",
+                    "token": "secret",
+                },
+            )
+            assert response.status == 200
+            payload = await response.json()
+            assert payload["result"]["server_running"] is True
+            assert payload["result"]["session_id"] == "session-a"
+            assert payload["result"]["extension_connected"] is True
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_http_rpc_requires_auth() -> None:
+    async def scenario() -> None:
+        router = BridgeRouter(token="secret")
+        client = TestClient(TestServer(create_app(router)))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/rpc",
+                json={
+                    "method": "ping_server",
+                    "session_id": "session-a",
+                    "token": "wrong",
+                },
+            )
+            assert response.status == 401
+            payload = await response.json()
+            assert payload == {
+                "error": "Bridge 鉴权失败",
+                "error_code": "AUTH_FAILED",
+            }
+        finally:
+            await client.close()
 
     asyncio.run(scenario())
 

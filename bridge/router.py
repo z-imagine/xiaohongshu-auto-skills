@@ -1,4 +1,4 @@
-"""WebSocket router for CLI requests and extension sessions."""
+"""Bridge router shared by WebSocket and HTTP transports."""
 
 from __future__ import annotations
 
@@ -10,13 +10,23 @@ import uuid
 from datetime import UTC
 from typing import Any
 
-from websockets.server import ServerConnection
+from aiohttp import WSMsgType, web
 
 from .auth import is_token_allowed
 from .session_store import SessionStore
 from .models import BridgeError
 
 logger = logging.getLogger("xhs-bridge")
+
+
+class ExtensionSocketAdapter:
+    """Expose a minimal send(raw) interface on top of aiohttp WebSocket."""
+
+    def __init__(self, ws: web.WebSocketResponse) -> None:
+        self._ws = ws
+
+    async def send(self, raw: str) -> None:
+        await self._ws.send_str(raw)
 
 
 class BridgeRouter:
@@ -26,41 +36,56 @@ class BridgeRouter:
         self._expected_token = token
         self._sessions = SessionStore()
 
-    async def handle(self, ws: ServerConnection) -> None:
+    async def handle_ws(self, request: web.Request) -> web.WebSocketResponse:
+        ws = web.WebSocketResponse(max_msg_size=50 * 1024 * 1024)
+        await ws.prepare(request)
+
         try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=10)
+            first = await asyncio.wait_for(ws.receive(), timeout=10)
         except (asyncio.TimeoutError, Exception) as exc:
             logger.warning("握手超时或失败: %s", exc)
-            return
+            await ws.close()
+            return ws
+
+        if first.type != WSMsgType.TEXT:
+            await self._send_error_ws(ws, BridgeError("INVALID_JSON", "握手消息不是合法 JSON"))
+            await ws.close()
+            return ws
 
         try:
-            msg = json.loads(raw)
+            msg = json.loads(first.data)
         except json.JSONDecodeError:
-            await self._send_error(ws, BridgeError("INVALID_JSON", "握手消息不是合法 JSON"))
-            return
+            await self._send_error_ws(ws, BridgeError("INVALID_JSON", "握手消息不是合法 JSON"))
+            await ws.close()
+            return ws
 
         if not self._is_authorized(msg):
-            await self._send_error(ws, BridgeError("AUTH_FAILED", "Bridge 鉴权失败"))
-            return
+            await self._send_error_ws(ws, BridgeError("AUTH_FAILED", "Bridge 鉴权失败"))
+            await ws.close()
+            return ws
 
         role = msg.get("role")
         if role == "extension":
             await self._handle_extension(ws, msg)
-            return
+            return ws
         if role == "cli":
-            await self._handle_cli(ws, msg)
-            return
+            await self._handle_cli_ws(ws, msg)
+            await ws.close()
+            return ws
 
-        await self._send_error(ws, BridgeError("UNKNOWN_ROLE", f"未知 role: {role}"))
+        await self._send_error_ws(ws, BridgeError("UNKNOWN_ROLE", f"未知 role: {role}"))
+        await ws.close()
+        return ws
 
     def _is_authorized(self, msg: dict[str, Any]) -> bool:
         return is_token_allowed(self._expected_token, msg.get("token"))
 
-    async def _handle_extension(self, ws: ServerConnection, msg: dict[str, Any]) -> None:
+    async def _handle_extension(self, ws: web.WebSocketResponse, msg: dict[str, Any]) -> None:
         session_id, assigned = self._sessions.allocate_session_id(str(msg.get("session_id") or ""))
         extension_version = str(msg.get("extension_version") or "")
-        self._sessions.register_extension(session_id, ws, extension_version)
-        await ws.send(json.dumps({
+        adapter = ExtensionSocketAdapter(ws)
+        self._sessions.register_extension(session_id, adapter, extension_version)
+        await ws.send_str(json.dumps({
             "kind": "hello",
             "session_id": session_id,
             "assigned": assigned,
@@ -68,9 +93,13 @@ class BridgeRouter:
         logger.info("Extension 已连接: session=%s version=%s", session_id, extension_version or "-")
 
         try:
-            async for raw in ws:
+            async for message in ws:
+                if message.type != WSMsgType.TEXT:
+                    if message.type in {WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR}:
+                        break
+                    continue
                 try:
-                    payload = json.loads(raw)
+                    payload = json.loads(message.data)
                 except json.JSONDecodeError:
                     continue
 
@@ -83,16 +112,31 @@ class BridgeRouter:
                 if message_id:
                     self._sessions.resolve_pending(message_id, payload)
         finally:
-            self._sessions.unregister_extension(session_id, ws)
+            self._sessions.unregister_extension(session_id, adapter)
             self._sessions.fail_session_requests(session_id, ConnectionError("Extension 断开连接"))
             logger.info("Extension 已断开: session=%s", session_id)
 
-    async def _handle_cli(self, ws: ServerConnection, msg: dict[str, Any]) -> None:
+    async def _handle_cli_ws(self, ws: web.WebSocketResponse, msg: dict[str, Any]) -> None:
+        try:
+            result = await self.execute_cli_rpc(msg)
+            await ws.send_str(json.dumps(result, ensure_ascii=False))
+        except BridgeError as error:
+            await self._send_error_ws(ws, error)
+
+    async def _handle_cli(self, ws: Any, msg: dict[str, Any]) -> None:
+        """Backward-compatible helper retained for tests and internal reuse."""
+        try:
+            result = await self.execute_cli_rpc(msg)
+            await ws.send(json.dumps(result, ensure_ascii=False))
+        except BridgeError as error:
+            await self._send_error(ws, error)
+
+    async def execute_cli_rpc(self, msg: dict[str, Any]) -> dict[str, Any]:
         method = msg.get("method")
         session_id = str(msg.get("session_id") or "").strip()
 
         if method == "ping_server":
-            await ws.send(json.dumps({
+            return {
                 "result": {
                     "server_running": True,
                     "session_id": session_id or None,
@@ -106,38 +150,31 @@ class BridgeRouter:
                         [state for state in self._sessions.list_states() if state.connected]
                     ),
                 }
-            }))
-            return
+            }
 
         if method == "get_session_state":
             if not session_id:
-                await self._send_error(
-                    ws,
-                    BridgeError("MISSING_SESSION_ID", "CLI 请求缺少 session_id"),
-                )
-                return
-            await ws.send(json.dumps({"result": self.get_session_snapshot(session_id)}, ensure_ascii=False))
-            return
+                raise BridgeError("MISSING_SESSION_ID", "CLI 请求缺少 session_id")
+            return {"result": self.get_session_snapshot(session_id)}
 
         if not session_id:
-            await self._send_error(ws, BridgeError("MISSING_SESSION_ID", "CLI 请求缺少 session_id"))
-            return
+            raise BridgeError("MISSING_SESSION_ID", "CLI 请求缺少 session_id")
 
         extension_ws = self._sessions.get_extension(session_id)
         if not extension_ws:
             error = BridgeError("EXTENSION_NOT_CONNECTED", f"Extension 未连接: session={session_id}")
             self._sessions.set_last_error(session_id, error.message)
-            await self._send_error(ws, error)
-            return
+            raise error
 
         self._sessions.mark_command(session_id, str(method or ""))
         message_id = str(uuid.uuid4())
-        msg["id"] = message_id
+        outbound = dict(msg)
+        outbound["id"] = message_id
         loop = asyncio.get_running_loop()
         future = self._sessions.create_pending(message_id, session_id, loop)
         started = time.perf_counter()
 
-        await extension_ws.send(json.dumps(msg, ensure_ascii=False))
+        await extension_ws.send(json.dumps(outbound, ensure_ascii=False))
 
         try:
             result = await asyncio.wait_for(future, timeout=90.0)
@@ -148,24 +185,45 @@ class BridgeRouter:
                 method,
                 duration_ms,
             )
-            await ws.send(json.dumps(result, ensure_ascii=False))
+            return result
         except asyncio.TimeoutError:
             self._sessions.drop_pending(message_id)
             error = BridgeError("COMMAND_TIMEOUT", "命令执行超时（90s）")
             self._sessions.set_last_error(session_id, error.message)
             logger.warning("Bridge command timed out: session=%s method=%s", session_id, method)
-            await self._send_error(ws, error)
+            raise error
         except ConnectionError as exc:
             error = BridgeError("EXTENSION_DISCONNECTED", str(exc))
             self._sessions.set_last_error(session_id, error.message)
             logger.warning("Bridge command failed: session=%s method=%s error=%s", session_id, method, exc)
-            await self._send_error(ws, error)
+            raise error
 
-    async def _send_error(self, ws: ServerConnection, error: BridgeError) -> None:
-        await ws.send(json.dumps({
+    async def _send_error_ws(self, ws: web.WebSocketResponse, error: BridgeError) -> None:
+        await ws.send_str(json.dumps(self.error_payload(error), ensure_ascii=False))
+
+    async def _send_error(self, ws: Any, error: BridgeError) -> None:
+        await ws.send(json.dumps(self.error_payload(error), ensure_ascii=False))
+
+    def error_payload(self, error: BridgeError) -> dict[str, str]:
+        return {
             "error": error.message,
             "error_code": error.code,
-        }, ensure_ascii=False))
+        }
+
+    def error_status_code(self, error: BridgeError) -> int:
+        mapping = {
+            "INVALID_JSON": 400,
+            "UNKNOWN_ROLE": 400,
+            "MISSING_SESSION_ID": 400,
+            "AUTH_FAILED": 401,
+            "EXTENSION_NOT_CONNECTED": 409,
+            "EXTENSION_DISCONNECTED": 409,
+            "COMMAND_TIMEOUT": 504,
+        }
+        return mapping.get(error.code, 500)
+
+    def active_sessions_count(self) -> int:
+        return len([state for state in self._sessions.list_states() if state.connected])
 
     def get_session_snapshot(self, session_id: str) -> dict[str, Any]:
         state = self._sessions.get_state(session_id)

@@ -2,6 +2,12 @@
 
 本文记录中心 bridge 的部署、配置和排障要点。
 
+当前 bridge 为**单进程单端口**服务：
+
+- 浏览器 extension 和现有 CLI 继续使用 WebSocket
+- 外部系统可通过 HTTP 调用同一套 RPC 协议
+- WS 与 HTTP 共用同一套路由、错误码和 `result/error_code` 数据结构
+
 ## 1. 启动方式
 
 推荐启动命令：
@@ -15,6 +21,12 @@ uv run python -m bridge.server --host 0.0.0.0 --port 9333 --token "<bridge-token
 ```bash
 uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<bridge-token>"
 ```
+
+启动后同一端口同时提供：
+
+- WebSocket：`ws://<host>:<port>` 或 `ws://<host>:<port>/ws`
+- HTTP 健康检查：`http://<host>:<port>/health`
+- HTTP RPC：`http://<host>:<port>/rpc`
 
 ## 2. 关键配置
 
@@ -78,9 +90,61 @@ bridge 当前统一返回：
 | `COMMAND_TIMEOUT` | 命令在 90 秒内未完成 |
 | `EXTENSION_DISCONNECTED` | 执行过程中浏览器扩展断开 |
 
-## 5. 排障顺序
+## 5. HTTP 对等 RPC
 
-### 5.1 CLI 报 bridge 无法连接
+HTTP 入口：
+
+```bash
+POST /rpc
+Content-Type: application/json
+```
+
+请求体与现有 CLI 短 WebSocket 消息保持一致：
+
+```json
+{
+  "role": "cli",
+  "method": "ping_server",
+  "session_id": "session-xxx",
+  "token": "bridge-token"
+}
+```
+
+成功返回：
+
+```json
+{
+  "result": {
+    "server_running": true
+  }
+}
+```
+
+失败返回：
+
+```json
+{
+  "error": "Bridge 鉴权失败",
+  "error_code": "AUTH_FAILED"
+}
+```
+
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:9333/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "role": "cli",
+    "method": "ping_server",
+    "session_id": "session-xxx",
+    "token": "bridge-token"
+  }'
+```
+
+## 6. 排障顺序
+
+### 6.1 CLI 报 bridge 无法连接
 
 检查：
 
@@ -88,7 +152,7 @@ bridge 当前统一返回：
 2. `bridge-url` 是否可达
 3. 反向代理是否正确放行 WebSocket
 
-### 5.2 CLI 报 session 未连接
+### 6.2 CLI 报 session 未连接
 
 检查：
 
@@ -97,7 +161,7 @@ bridge 当前统一返回：
 3. token 是否一致
 4. popup 中的 bridge 地址是否指向正确环境
 
-### 5.3 bridge 日志有命令超时
+### 6.3 bridge 日志有命令超时
 
 检查：
 
@@ -105,7 +169,7 @@ bridge 当前统一返回：
 2. 小红书页面结构是否变化
 3. 是否存在网络资源下载慢导致上传未完成
 
-### 5.4 媒体上传失败
+### 6.4 媒体上传失败
 
 检查：
 
@@ -114,7 +178,7 @@ bridge 当前统一返回：
 3. OSS 或临时资源服务是否允许浏览器读取
 4. 远端资源的 `Content-Type` 是否合理
 
-## 6. 当前已知限制
+## 7. 当前已知限制
 
 - bridge 的多用户能力已具备路由和状态基础，但仍需真实压测验证
 - OSS 对象自动清理依赖外部临时资源服务或桶生命周期策略

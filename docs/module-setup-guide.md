@@ -7,7 +7,8 @@
 当前系统建议按以下模块理解和部署：
 
 1. `bridge/`
-   - 中心 WebSocket 路由服务
+   - 中心路由服务
+   - 同一进程同时提供 WebSocket 和 HTTP RPC
    - 负责 CLI 与浏览器 extension 的会话转发
 
 2. `scripts/cli.py`
@@ -62,6 +63,12 @@ bridge 正式入口：
 uv run python -m bridge.server --host 0.0.0.0 --port 9333 --token "<bridge-token>"
 ```
 
+同一端口同时提供：
+
+- WebSocket：`ws://<host>:9333` 或 `ws://<host>:9333/ws`
+- HTTP 健康检查：`http://<host>:9333/health`
+- HTTP RPC：`http://<host>:9333/rpc`
+
 Docker 入口：
 
 ```bash
@@ -85,6 +92,7 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 ### 推荐部署方式
 
 - 外层使用 Nginx / Caddy 做 WebSocket 反向代理
+- 如需给 n8n、curl 或其他工作流系统调用，可直接反代同端口下的 HTTP `/rpc`
 - 对外暴露时优先使用 `wss://`
 - 每个环境使用单独 token
 
@@ -179,6 +187,21 @@ python scripts/cli.py check-login \
 export XHS_BRIDGE_URL=wss://bridge.example.com/ws
 export XHS_BRIDGE_SESSION_ID=<SESSION_ID_FROM_EXTENSION>
 export XHS_BRIDGE_TOKEN=<bridge-token>
+```
+
+### HTTP 工作流调用
+
+如果外部系统不方便走 WebSocket，可直接调用同端口的 HTTP `/rpc`，请求体字段与 CLI 短 WS 完全一致：
+
+```bash
+curl -X POST http://127.0.0.1:9333/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "role": "cli",
+    "method": "ping_server",
+    "session_id": "<SESSION_ID_FROM_EXTENSION>",
+    "token": "<bridge-token>"
+  }'
 ```
 
 ## 7. 临时资源服务接入

@@ -25,7 +25,7 @@ class SessionState:
 
 
 @dataclass(slots=True)
-class BridgeError:
+class BridgeError(Exception):
     """Structured bridge error used across router responses."""
 
     code: str
