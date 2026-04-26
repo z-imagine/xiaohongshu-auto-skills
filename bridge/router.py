@@ -213,12 +213,14 @@ class BridgeRouter:
     def error_status_code(self, error: BridgeError) -> int:
         mapping = {
             "INVALID_JSON": 400,
+            "INVALID_ARGUMENT": 400,
             "UNKNOWN_ROLE": 400,
             "MISSING_SESSION_ID": 400,
             "AUTH_FAILED": 401,
             "EXTENSION_NOT_CONNECTED": 409,
             "EXTENSION_DISCONNECTED": 409,
             "COMMAND_TIMEOUT": 504,
+            "BUSINESS_ERROR": 500,
         }
         return mapping.get(error.code, 500)
 

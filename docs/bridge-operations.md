@@ -25,8 +25,9 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 启动后同一端口同时提供：
 
 - WebSocket：`ws://<host>:<port>` 或 `ws://<host>:<port>/ws`
-- HTTP 健康检查：`http://<host>:<port>/health`
-- HTTP RPC：`http://<host>:<port>/rpc`
+- HTTP 健康检查：`http://<host>:<port>/bridge/health`
+- HTTP RPC：`http://<host>:<port>/bridge/rpc`
+- XHS 业务接口：`http://<host>:<port>/xhs/*`
 
 ## 2. 关键配置
 
@@ -95,7 +96,7 @@ bridge 当前统一返回：
 HTTP 入口：
 
 ```bash
-POST /rpc
+POST /bridge/rpc
 Content-Type: application/json
 ```
 
@@ -132,7 +133,7 @@ Content-Type: application/json
 示例：
 
 ```bash
-curl -X POST http://127.0.0.1:9333/rpc \
+curl -X POST http://127.0.0.1:9333/bridge/rpc \
   -H 'Content-Type: application/json' \
   -d '{
     "role": "cli",

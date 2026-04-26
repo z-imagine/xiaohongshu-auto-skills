@@ -184,6 +184,57 @@ def test_http_rpc_requires_auth() -> None:
     asyncio.run(scenario())
 
 
+def test_xhs_route_requires_auth() -> None:
+    async def scenario() -> None:
+        router = BridgeRouter(token="secret")
+        client = TestClient(TestServer(create_app(router)))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/xhs/search-feeds",
+                json={
+                    "session_id": "session-a",
+                    "token": "wrong",
+                    "keyword": "openclaw",
+                },
+            )
+            assert response.status == 401
+            payload = await response.json()
+            assert payload == {
+                "error": "Bridge 鉴权失败",
+                "error_code": "AUTH_FAILED",
+            }
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+
+
+def test_xhs_route_requires_session_id() -> None:
+    async def scenario() -> None:
+        router = BridgeRouter(token="secret")
+        client = TestClient(TestServer(create_app(router)))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/xhs/search-feeds",
+                json={
+                    "token": "secret",
+                    "keyword": "openclaw",
+                },
+            )
+            assert response.status == 400
+            payload = await response.json()
+            assert payload == {
+                "error": "缺少必填字段: session_id",
+                "error_code": "INVALID_ARGUMENT",
+            }
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
+
+
 def test_router_rejects_invalid_token() -> None:
     async def scenario() -> None:
         router = BridgeRouter(token="secret")

@@ -86,8 +86,9 @@ docker compose logs -f xhs-bridge
 同一端口同时提供：
 
 - WebSocket：给 extension 和现有 CLI 使用
-- HTTP `/health`：健康检查
-- HTTP `/rpc`：与现有短 WebSocket CLI 消息对等的 RPC 入口，适合 n8n / curl / 外部工作流
+- HTTP `/bridge/health`：健康检查
+- HTTP `/bridge/rpc`：与现有短 WebSocket CLI 消息对等的基础设施 RPC 入口
+- HTTP `/xhs/*`：小红书业务接口，适合 n8n / curl / 外部工作流
 
 如果你希望本地打包后通过 `ssh` 上传到远端服务器并自动部署，也可以直接使用：
 

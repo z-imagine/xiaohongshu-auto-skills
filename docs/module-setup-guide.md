@@ -66,8 +66,9 @@ uv run python -m bridge.server --host 0.0.0.0 --port 9333 --token "<bridge-token
 同一端口同时提供：
 
 - WebSocket：`ws://<host>:9333` 或 `ws://<host>:9333/ws`
-- HTTP 健康检查：`http://<host>:9333/health`
-- HTTP RPC：`http://<host>:9333/rpc`
+- HTTP 健康检查：`http://<host>:9333/bridge/health`
+- HTTP RPC：`http://<host>:9333/bridge/rpc`
+- XHS 业务接口：`http://<host>:9333/xhs/*`
 
 Docker 入口：
 
@@ -92,7 +93,7 @@ uv run python scripts/bridge_server.py --host 0.0.0.0 --port 9333 --token "<brid
 ### 推荐部署方式
 
 - 外层使用 Nginx / Caddy 做 WebSocket 反向代理
-- 如需给 n8n、curl 或其他工作流系统调用，可直接反代同端口下的 HTTP `/rpc`
+- 如需给 n8n、curl 或其他工作流系统调用，可直接反代同端口下的 HTTP `/bridge/*` 与 `/xhs/*`
 - 对外暴露时优先使用 `wss://`
 - 每个环境使用单独 token
 
@@ -191,10 +192,10 @@ export XHS_BRIDGE_TOKEN=<bridge-token>
 
 ### HTTP 工作流调用
 
-如果外部系统不方便走 WebSocket，可直接调用同端口的 HTTP `/rpc`，请求体字段与 CLI 短 WS 完全一致：
+如果外部系统不方便走 WebSocket，可直接调用同端口的 HTTP `/bridge/rpc`，请求体字段与 CLI 短 WS 完全一致：
 
 ```bash
-curl -X POST http://127.0.0.1:9333/rpc \
+curl -X POST http://127.0.0.1:9333/bridge/rpc \
   -H 'Content-Type: application/json' \
   -d '{
     "role": "cli",
@@ -203,6 +204,11 @@ curl -X POST http://127.0.0.1:9333/rpc \
     "token": "<bridge-token>"
   }'
 ```
+
+业务对接请优先查看：
+
+- [bridge-http-api.md](/Users/samuel/Projects/SkillProjects/xiaohongshu-auto-skills/docs/bridge-http-api.md)
+- [xhs-http-api.md](/Users/samuel/Projects/SkillProjects/xiaohongshu-auto-skills/docs/xhs-http-api.md)
 
 ## 7. 临时资源服务接入
 

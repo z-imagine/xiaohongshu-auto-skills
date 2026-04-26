@@ -11,6 +11,7 @@ from aiohttp import web
 from .config import build_parser, config_from_args
 from .models import BridgeError
 from .router import BridgeRouter
+from .xhs_api import register_xhs_routes
 
 logger = logging.getLogger("xhs-bridge")
 
@@ -68,8 +69,12 @@ def create_app(router: BridgeRouter) -> web.Application:
     app.router.add_get("/", router.handle_ws)
     app.router.add_get("/ws", router.handle_ws)
     app.router.add_post("/rpc", rpc)
+    app.router.add_post("/bridge/rpc", rpc)
     app.router.add_get("/health", health)
+    app.router.add_get("/bridge/health", health)
     app.router.add_get("/sessions/{session_id}", session_state)
+    app.router.add_get("/bridge/sessions/{session_id}", session_state)
+    register_xhs_routes(app, router)
     return app
 
 
@@ -86,7 +91,8 @@ async def serve() -> None:
     site = web.TCPSite(runner, config.host, config.port)
     await site.start()
     logger.info("Bridge server 已启动: ws://%s:%d", config.host, config.port)
-    logger.info("HTTP RPC 已启用: http://%s:%d/rpc", config.host, config.port)
+    logger.info("Bridge HTTP 已启用: http://%s:%d/bridge/rpc", config.host, config.port)
+    logger.info("XHS HTTP 已启用: http://%s:%d/xhs/search-feeds", config.host, config.port)
     logger.info("等待浏览器扩展连接...")
     await asyncio.Future()
 
