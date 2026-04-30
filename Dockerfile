@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -i "${PIP_INDEX_URL}" uv
 
 COPY pyproject.toml uv.lock README.md /app/
 COPY bridge /app/bridge
+COPY scripts /app/scripts
 
 RUN uv sync --frozen --no-dev --no-install-project --default-index "${UV_DEFAULT_INDEX}"
 

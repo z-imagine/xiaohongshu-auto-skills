@@ -64,7 +64,7 @@ fi
 REMOTE_RUNTIME_DIR="${REMOTE_DIR}/runtime"
 REMOTE_BACKUP_DIR="${REMOTE_DIR}/backups"
 
-mkdir -p "${STAGING_DIR}/bridge" "${DEPLOY_BASE_DIR}"
+mkdir -p "${STAGING_DIR}/bridge" "${STAGING_DIR}/scripts" "${DEPLOY_BASE_DIR}"
 
 cp "${ROOT_DIR}/Dockerfile" "${STAGING_DIR}/"
 cp "${ROOT_DIR}/docker-compose.yml" "${STAGING_DIR}/"
@@ -74,6 +74,7 @@ cp "${ROOT_DIR}/pyproject.toml" "${STAGING_DIR}/"
 cp "${ROOT_DIR}/uv.lock" "${STAGING_DIR}/"
 cp "${ROOT_DIR}/README.md" "${STAGING_DIR}/"
 cp -R "${ROOT_DIR}/bridge/." "${STAGING_DIR}/bridge/"
+cp -R "${ROOT_DIR}/scripts/." "${STAGING_DIR}/scripts/"
 
 tar -C "${STAGING_DIR}" -czf "${ARTIFACT_PATH}" .
 
