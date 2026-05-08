@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 
@@ -16,12 +17,16 @@ from .xhs_api import register_xhs_routes
 logger = logging.getLogger("xhs-bridge")
 
 
+def _json_response(data: dict, *, status: int = 200) -> web.Response:
+    return web.json_response(data, status=status, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
+
+
 def create_app(router: BridgeRouter) -> web.Application:
     """Create the combined HTTP + WebSocket bridge app."""
     app = web.Application(client_max_size=50 * 1024 * 1024)
 
     async def health(_request: web.Request) -> web.Response:
-        return web.json_response({
+        return _json_response({
             "ok": True,
             "server_running": True,
             "active_sessions": router.active_sessions_count(),
@@ -32,28 +37,28 @@ def create_app(router: BridgeRouter) -> web.Application:
             msg = await request.json()
         except Exception:
             bridge_error = BridgeError("INVALID_JSON", "请求体不是合法 JSON")
-            return web.json_response(
+            return _json_response(
                 router.error_payload(bridge_error),
                 status=router.error_status_code(bridge_error),
             )
         if not isinstance(msg, dict):
             bridge_error = BridgeError("INVALID_JSON", "请求体必须是 JSON 对象")
-            return web.json_response(
+            return _json_response(
                 router.error_payload(bridge_error),
                 status=router.error_status_code(bridge_error),
             )
         msg.setdefault("role", "cli")
         if not router._is_authorized(msg):
             bridge_error = BridgeError("AUTH_FAILED", "Bridge 鉴权失败")
-            return web.json_response(
+            return _json_response(
                 router.error_payload(bridge_error),
                 status=router.error_status_code(bridge_error),
             )
         try:
             result = await router.execute_cli_rpc(msg)
-            return web.json_response(result)
+            return _json_response(result)
         except BridgeError as exc:
-            return web.json_response(
+            return _json_response(
                 router.error_payload(exc),
                 status=router.error_status_code(exc),
             )
@@ -63,8 +68,8 @@ def create_app(router: BridgeRouter) -> web.Application:
         token = request.query.get("token", "")
         if not router._is_authorized({"token": token}):
             error = BridgeError("AUTH_FAILED", "Bridge 鉴权失败")
-            return web.json_response(router.error_payload(error), status=router.error_status_code(error))
-        return web.json_response({"result": router.get_session_snapshot(session_id)})
+            return _json_response(router.error_payload(error), status=router.error_status_code(error))
+        return _json_response({"result": router.get_session_snapshot(session_id)})
 
     app.router.add_get("/", router.handle_ws)
     app.router.add_get("/ws", router.handle_ws)

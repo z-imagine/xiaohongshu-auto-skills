@@ -35,6 +35,7 @@ metadata:
 |--------|------|
 | `list-feeds` | 获取首页推荐 Feed |
 | `search-feeds` | 关键词搜索笔记（支持筛选） |
+| `search-users` | 关键词搜索用户/账号 |
 | `get-feed-detail` | 获取笔记完整内容和评论 |
 | `user-profile` | 获取用户主页信息 |
 
@@ -45,10 +46,11 @@ metadata:
 
 按优先级判断：
 
-1. 用户要求"搜索笔记 / 找内容 / 搜关键词"：执行搜索流程。
+1. 用户要求"搜索笔记 / 找内容 / 搜关键词"：执行搜索笔记流程。
 2. 用户要求"查看笔记详情 / 看这篇帖子"：执行详情获取流程。
 3. 用户要求"首页推荐 / 浏览首页"：执行首页 Feed 获取。
-4. 用户要求"查看用户主页 / 看看这个博主"：执行用户资料获取。
+4. 用户要求"搜索账号 / 搜用户 / 找博主"：执行搜索用户流程。
+5. 用户要求"查看用户主页 / 看看这个博主"：执行用户资料获取。
 
 ## 必做约束
 
@@ -110,6 +112,18 @@ python scripts/cli.py search-feeds \
 输出 JSON 包含：
 - `feeds`：笔记列表，每项包含 `id`、`xsec_token`、`note_card`（标题、封面、用户信息、互动数据）
 - `count`：结果数量
+
+### 搜索用户/账号
+
+```bash
+python scripts/cli.py search-users --keyword "openclaw"
+```
+
+输出 JSON 包含：
+- `users`：用户列表，每项包含 `id`、`name`、`redId`、`fans`、`noteCount`、`xsecToken`、`profileUrl`
+- `count`：结果数量
+
+如需查看用户主页详情，从结果中取 `id` 和 `xsecToken`，继续执行 `user-profile`。
 
 ### 获取笔记详情
 

@@ -167,6 +167,60 @@ class Feed:
         return result
 
 
+# ========== 用户搜索 ==========
+
+
+@dataclass
+class UserSearchResult:
+    id: str = ""
+    name: str = ""
+    red_id: str = ""
+    fans: str = ""
+    note_count: int = 0
+    xsec_token: str = ""
+    avatar: str = ""
+    update_time: str = ""
+    reason: str = ""
+    followed: bool = False
+
+    @classmethod
+    def from_dict(cls, d: dict) -> UserSearchResult:
+        return cls(
+            id=d.get("id", ""),
+            name=d.get("name", ""),
+            red_id=d.get("redId", d.get("red_id", "")),
+            fans=d.get("fans", ""),
+            note_count=int(d.get("noteCount", d.get("note_count", 0)) or 0),
+            xsec_token=d.get("xsecToken", d.get("xsec_token", "")),
+            avatar=d.get("image", ""),
+            update_time=d.get("updateTime", d.get("update_time", "")),
+            reason=d.get("reason", ""),
+            followed=bool(d.get("followed", False)),
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {
+            "id": self.id,
+            "name": self.name,
+            "redId": self.red_id,
+            "fans": self.fans,
+            "noteCount": self.note_count,
+            "xsecToken": self.xsec_token,
+            "avatar": self.avatar,
+            "followed": self.followed,
+        }
+        if self.id and self.xsec_token:
+            result["profileUrl"] = (
+                f"https://www.xiaohongshu.com/user/profile/{self.id}"
+                f"?xsec_token={self.xsec_token}&xsec_source=pc_search"
+            )
+        if self.update_time:
+            result["updateTime"] = self.update_time
+        if self.reason:
+            result["reason"] = self.reason
+        return result
+
+
 # ========== Feed 详情 ==========
 
 

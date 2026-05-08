@@ -432,6 +432,18 @@ def cmd_search_feeds(args: argparse.Namespace) -> None:
         browser.close()
 
 
+def cmd_search_users(args: argparse.Namespace) -> None:
+    """搜索用户/账号。"""
+    from xhs.user_search import search_users
+
+    browser, page = _connect(args)
+    try:
+        users = search_users(page, args.keyword)
+        _output({"users": [u.to_dict() for u in users], "count": len(users)})
+    finally:
+        browser.close()
+
+
 def cmd_get_feed_detail(args: argparse.Namespace) -> None:
     """获取 Feed 详情。"""
     from xhs.feed_detail import get_feed_detail
@@ -839,6 +851,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--search-scope", help="范围: 不限|已看过|未看过|已关注")
     sub.add_argument("--location", help="位置: 不限|同城|附近")
     sub.set_defaults(func=cmd_search_feeds)
+
+    # search-users
+    sub = subparsers.add_parser("search-users", help="搜索用户/账号")
+    sub.add_argument("--keyword", required=True, help="搜索关键词")
+    sub.set_defaults(func=cmd_search_users)
 
     # get-feed-detail
     sub = subparsers.add_parser("get-feed-detail", help="获取 Feed 详情")

@@ -132,6 +132,41 @@
 }
 ```
 
+### `POST /xhs/search-users`
+
+搜索用户/账号。该接口通过浏览器打开搜索页并切换到“用户”tab，从页面状态读取结果。
+
+请求：
+
+```json
+{
+  "session_id": "session-xxx",
+  "token": "bridge-token",
+  "keyword": "openclaw"
+}
+```
+
+响应：
+
+```json
+{
+  "users": [
+    {
+      "id": "USER_ID",
+      "name": "OpenClaw大模型",
+      "redId": "178548264",
+      "fans": "606",
+      "noteCount": 37,
+      "xsecToken": "XSEC_TOKEN",
+      "avatar": "https://...",
+      "profileUrl": "https://www.xiaohongshu.com/user/profile/...",
+      "updateTime": "1天前更新"
+    }
+  ],
+  "count": 1
+}
+```
+
 ### `POST /xhs/get-feed-detail`
 
 请求：

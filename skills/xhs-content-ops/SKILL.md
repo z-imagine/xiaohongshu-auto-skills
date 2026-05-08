@@ -34,6 +34,7 @@ metadata:
 | 子命令 | 用途 |
 |--------|------|
 | `search-feeds` | 搜索笔记（支持筛选） |
+| `search-users` | 搜索用户/账号 |
 | `list-feeds` | 获取首页推荐 Feed |
 | `get-feed-detail` | 获取笔记详情和评论 |
 | `user-profile` | 获取用户主页信息 |

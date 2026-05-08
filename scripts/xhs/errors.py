@@ -12,6 +12,13 @@ class NoFeedsError(XHSError):
         super().__init__("没有捕获到 feeds 数据")
 
 
+class NoUsersError(XHSError):
+    """没有捕获到用户搜索数据。"""
+
+    def __init__(self) -> None:
+        super().__init__("没有捕获到用户搜索数据")
+
+
 class NoFeedDetailError(XHSError):
     """没有捕获到 feed 详情数据。"""
 

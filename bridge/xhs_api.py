@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -46,7 +47,12 @@ from xhs.publish_long_article import (  # noqa: E402
 from xhs.publish_video import fill_publish_video_form, publish_video_content  # noqa: E402
 from xhs.search import search_feeds  # noqa: E402
 from xhs.types import CommentLoadConfig, FilterOption, PublishImageContent, PublishVideoContent  # noqa: E402
+from xhs.user_search import search_users  # noqa: E402
 from xhs.user_profile import get_user_profile  # noqa: E402
+
+
+def _json_response(data: dict[str, Any], *, status: int = 200) -> web.Response:
+    return web.json_response(data, status=status, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
 
 
 class InProcessBridgePage(BridgePage):
@@ -118,12 +124,12 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
             loop = asyncio.get_running_loop()
             page = InProcessBridgePage(router, session_id, token, loop)
             result = await asyncio.to_thread(handler, page, body)
-            return web.json_response(result)
+            return _json_response(result)
         except BridgeError as exc:
-            return web.json_response(router.error_payload(exc), status=router.error_status_code(exc))
+            return _json_response(router.error_payload(exc), status=router.error_status_code(exc))
         except Exception as exc:
             error = BridgeError("BUSINESS_ERROR", str(exc))
-            return web.json_response(router.error_payload(error), status=router.error_status_code(error))
+            return _json_response(router.error_payload(error), status=router.error_status_code(error))
 
     def handle_check_login(page: InProcessBridgePage, _body: dict[str, Any]) -> dict[str, Any]:
         png_bytes, _b64_orig, already = fetch_qrcode(page)
@@ -217,6 +223,10 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         )
         feeds = search_feeds(page, keyword, filter_opt)
         return {"feeds": [f.to_dict() for f in feeds], "count": len(feeds)}
+
+    def handle_search_users(page: InProcessBridgePage, body: dict[str, Any]) -> dict[str, Any]:
+        users = search_users(page, _require_str(body, "keyword"))
+        return {"users": [u.to_dict() for u in users], "count": len(users)}
 
     def handle_get_feed_detail(page: InProcessBridgePage, body: dict[str, Any]) -> dict[str, Any]:
         detail = get_feed_detail(
@@ -357,6 +367,7 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         ("delete-cookies", handle_delete_cookies),
         ("list-feeds", handle_list_feeds),
         ("search-feeds", handle_search_feeds),
+        ("search-users", handle_search_users),
         ("get-feed-detail", handle_get_feed_detail),
         ("user-profile", handle_user_profile),
         ("post-comment", handle_post_comment),
