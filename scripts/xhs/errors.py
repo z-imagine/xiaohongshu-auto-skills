@@ -36,9 +36,14 @@ class NotLoggedInError(XHSError):
 class PageNotAccessibleError(XHSError):
     """页面不可访问。"""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, error_code: str = "", url: str = "") -> None:
         self.reason = reason
-        super().__init__(f"笔记不可访问: {reason}")
+        self.error_code = error_code
+        self.url = url
+        parts = [f"笔记不可访问: {reason}"]
+        if error_code:
+            parts.append(f"(code={error_code})")
+        super().__init__(" ".join(parts))
 
 
 class UploadTimeoutError(XHSError):

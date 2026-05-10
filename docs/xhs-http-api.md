@@ -198,6 +198,41 @@
 }
 ```
 
+### `POST /xhs/user-feeds`
+
+获取用户主页 Feed；传 `load_more: true` 时触发一次“加载更多”并只返回本次新增内容。
+
+请求：
+
+```json
+{
+  "session_id": "session-xxx",
+  "token": "bridge-token",
+  "user_id": "USER_ID",
+  "xsec_token": "XSEC_TOKEN",
+  "load_more": false
+}
+```
+
+响应：
+
+```json
+{
+  "feeds": [],
+  "count": 30,
+  "totalLoaded": 30,
+  "hasMore": true
+}
+```
+
+说明：
+
+- `load_more=false`：`feeds` 返回当前页面已加载的用户 Feed，通常是首屏。
+- `load_more=true`：`feeds` 只返回本次加载新增的 Feed，避免重复回传历史数据。
+- `totalLoaded` 是当前浏览器页面内累计已加载数量。
+- `hasMore=false` 表示用户主页已触底或当前 tab 无更多内容。
+- 该接口不是分页查询，不提供 `page/page_size`。
+
 ## 互动类
 
 ### `POST /xhs/post-comment`

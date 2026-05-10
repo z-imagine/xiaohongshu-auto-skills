@@ -101,6 +101,7 @@ class InteractInfo:
 
 @dataclass
 class NoteCard:
+    note_id: str = ""
     type: str = ""
     display_title: str = ""
     user: User = field(default_factory=User)
@@ -112,6 +113,7 @@ class NoteCard:
     def from_dict(cls, d: dict) -> NoteCard:
         video_data = d.get("video")
         return cls(
+            note_id=d.get("noteId", ""),
             type=d.get("type", ""),
             display_title=d.get("displayTitle", ""),
             user=User.from_dict(d.get("user", {})),
@@ -143,6 +145,7 @@ class Feed:
         """序列化为 JSON 兼容的字典。"""
         result: dict = {
             "id": self.id,
+            "noteId": self.note_card.note_id,
             "xsecToken": self.xsec_token,
             "modelType": self.model_type,
             "index": self.index,

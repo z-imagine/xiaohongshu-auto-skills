@@ -12,16 +12,13 @@ import websockets.sync.client as ws_client
 from .errors import CDPError, ElementNotFoundError
 
 BRIDGE_URL = "ws://localhost:9333"
-DEFAULT_SESSION_ID = "default"
-
-
 class BridgePage:
     """与 CDP Page 接口兼容的 Extension Bridge 实现。"""
 
     def __init__(
         self,
         bridge_url: str = BRIDGE_URL,
-        session_id: str = DEFAULT_SESSION_ID,
+        session_id: str = "",
         token: str = "",
     ) -> None:
         self._bridge_url = bridge_url

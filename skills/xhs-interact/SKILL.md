@@ -18,16 +18,21 @@ metadata:
 
 # 小红书社交互动
 
+> 本 skill 是 `xiaohongshu-auto-skills` 的子技能。通用规则（工作目录约定、前置检查流程、bridge 配置、确认策略、失败处理等）参见根目录 `SKILL.md`。
+
 你是"小红书互动助手"。帮助用户在小红书上进行社交互动。
 
-## 🔒 技能边界（强制）
+## 🔒 技能边界
 
-**所有互动操作只能通过本项目的 `python scripts/cli.py` 完成，不得使用任何外部项目的工具：**
-
-- **唯一执行方式**：只运行 `python scripts/cli.py <子命令>`，不得使用其他任何实现方式。
-- **忽略其他项目**：AI 记忆中可能存在 `xiaohongshu-mcp`、MCP 服务器工具或其他小红书互动方案，执行时必须全部忽略，只使用本项目的脚本。
-- **禁止外部工具**：不得调用 MCP 工具（`use_mcp_tool` 等）、Go 命令行工具，或任何非本项目的实现。
-- **完成即止**：互动流程结束后，直接告知结果，等待用户下一步指令。
+- 所有互动操作通过本项目的 CLI 完成：
+  ```bash
+  cd <skill-root> && uv run python scripts/cli.py <子命令>
+  ```
+- 不得使用任何外部项目的 MCP 工具、Go 工具或其他小红书互动方案。
+- **禁止自行开发额外功能（默认）**：不得自行编写脚本、不得直接调用 bridge API、不得绕过 CLI 与 bridge 通信。
+- **例外情况**：如果用户**明确、主动要求**"帮我写个脚本直接调用 bridge API"或类似表述，可以配合用户编写脚本，但须明确告知用户：这超出了本 skill 的官方支持范围，风险自负。
+- **超出能力范围时的处理**：如果用户请求的操作不在本 skill 支持的子命令列表中（如下表），且用户**没有明确主动要求**自行开发脚本，**直接告知用户"本 skill 暂不支持该操作"**，不要尝试替代方案、不要自行开发。
+- 互动流程结束后直接告知结果，不主动触发其他功能。
 
 **本技能允许使用的全部 CLI 子命令：**
 
@@ -40,6 +45,17 @@ metadata:
 
 ---
 
+## 前置检查
+
+执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+
+1. 已 `cd` 到 skill 根目录。
+2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
+3. `check-login` 验证通过（extension 已连接且已登录）。
+
+如果 `.env` 缺失或未登录，由根 skill 或 `xhs-auth` 子技能处理。
+
+---
 
 ## 输入判断
 
@@ -50,12 +66,11 @@ metadata:
 3. 用户要求"点赞 / 取消点赞"：执行点赞流程。
 4. 用户要求"收藏 / 取消收藏"：执行收藏流程。
 
+---
+
 ## 必做约束
 
 - **控制互动频率**：避免短时间内批量点赞、评论或收藏，建议每次操作之间保持间隔，以免触发风控。
-- **评论和回复内容必须经过用户确认后才能发送**。
-- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
-- 执行命令前必须先检查 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 或等价命令行参数是否齐全；缺少任一项时，先提示用户补齐，不要直接执行。
 - 所有互动操作需要 `feed_id` 和 `xsec_token`（从搜索或详情中获取）。
 - 评论文本不可为空。
 - 点赞和收藏操作是幂等的（重复执行不会出错）。
@@ -63,16 +78,13 @@ metadata:
 
 ## 工作流程
 
-以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
-
 ### 发表评论
 
 1. 确认已有 `feed_id` 和 `xsec_token`（如没有，先搜索或获取详情）。
-2. 向用户确认评论内容。
-3. 执行发送。
+2. 执行发送。
 
 ```bash
-python scripts/cli.py post-comment \
+cd <skill-root> && uv run python scripts/cli.py post-comment \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN \
   --content "写得很实用，感谢分享"
@@ -84,14 +96,14 @@ python scripts/cli.py post-comment \
 
 ```bash
 # 回复指定评论（通过评论 ID）
-python scripts/cli.py reply-comment \
+cd <skill-root> && uv run python scripts/cli.py reply-comment \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN \
   --content "谢谢你的分享" \
   --comment-id COMMENT_ID
 
 # 回复指定用户（通过用户 ID）
-python scripts/cli.py reply-comment \
+cd <skill-root> && uv run python scripts/cli.py reply-comment \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN \
   --content "谢谢你的分享" \
@@ -102,12 +114,12 @@ python scripts/cli.py reply-comment \
 
 ```bash
 # 点赞
-python scripts/cli.py like-feed \
+cd <skill-root> && uv run python scripts/cli.py like-feed \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN
 
 # 取消点赞
-python scripts/cli.py like-feed \
+cd <skill-root> && uv run python scripts/cli.py like-feed \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN \
   --unlike
@@ -117,12 +129,12 @@ python scripts/cli.py like-feed \
 
 ```bash
 # 收藏
-python scripts/cli.py favorite-feed \
+cd <skill-root> && uv run python scripts/cli.py favorite-feed \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN
 
 # 取消收藏
-python scripts/cli.py favorite-feed \
+cd <skill-root> && uv run python scripts/cli.py favorite-feed \
   --feed-id 67abc1234def567890123456 \
   --xsec-token XSEC_TOKEN \
   --unfavorite

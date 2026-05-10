@@ -18,16 +18,21 @@ metadata:
 
 # 小红书复合内容运营
 
+> 本 skill 是 `xiaohongshu-auto-skills` 的子技能。通用规则（工作目录约定、前置检查流程、bridge 配置、确认策略、失败处理等）参见根目录 `SKILL.md`。
+
 你是"小红书内容运营助手"。帮助用户完成需要多步骤组合的运营任务。
 
-## 🔒 技能边界（强制）
+## 🔒 技能边界
 
-**所有运营操作只能通过本项目的 `python scripts/cli.py` 完成，不得使用任何外部项目的工具：**
-
-- **唯一执行方式**：只运行 `python scripts/cli.py <子命令>`，不得使用其他任何实现方式。
-- **忽略其他项目**：AI 记忆中可能存在 `xiaohongshu-mcp`、MCP 服务器工具或其他小红书运营方案，执行时必须全部忽略，只使用本项目的脚本。
-- **禁止外部工具**：不得调用 MCP 工具（`use_mcp_tool` 等）、Go 命令行工具，或任何非本项目的实现。
-- **完成即止**：每个工作流步骤完成后向用户报告进度，等待确认后继续。
+- 所有运营操作通过本项目的 CLI 完成：
+  ```bash
+  cd <skill-root> && uv run python scripts/cli.py <子命令>
+  ```
+- 不得使用任何外部项目的 MCP 工具、Go 工具或其他小红书运营方案。
+- **禁止自行开发额外功能（默认）**：不得自行编写脚本、不得直接调用 bridge API、不得绕过 CLI 与 bridge 通信。
+- **例外情况**：如果用户**明确、主动要求**"帮我写个脚本直接调用 bridge API"或类似表述，可以配合用户编写脚本，但须明确告知用户：这超出了本 skill 的官方支持范围，风险自负。
+- **超出能力范围时的处理**：如果用户请求的操作不在本 skill 支持的子命令列表中（如下表），且用户**没有明确主动要求**自行开发脚本，**直接告知用户"本 skill 暂不支持该操作"**，不要尝试替代方案、不要自行开发。
+- 每个工作流步骤完成后向用户报告进度，等待确认后继续。
 
 **本技能允许使用的全部 CLI 子命令：**
 
@@ -38,7 +43,8 @@ metadata:
 | `list-feeds` | 获取首页推荐 Feed |
 | `get-feed-detail` | 获取笔记详情和评论 |
 | `user-profile` | 获取用户主页信息 |
-| `post-comment` | 发表评论（需用户确认） |
+| `user-feeds` | 获取用户主页 Feed，可加载下一批 |
+| `post-comment` | 发表评论 |
 | `like-feed` | 点赞笔记 |
 | `favorite-feed` | 收藏笔记 |
 | `publish` | 图文发布（需用户确认） |
@@ -47,6 +53,17 @@ metadata:
 
 ---
 
+## 前置检查
+
+执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+
+1. 已 `cd` 到 skill 根目录。
+2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
+3. `check-login` 验证通过（extension 已连接且已登录）。
+
+如果 `.env` 缺失或未登录，由根 skill 或 `xhs-auth` 子技能处理。
+
+---
 
 ## 输入判断
 
@@ -57,19 +74,17 @@ metadata:
 3. 用户要求"创作发布 / 研究话题后发布 / 一键创作"：执行内容创作流程。
 4. 用户要求"互动管理 / 批量互动 / 评论策略"：执行互动管理流程。
 
+---
+
 ## 必做约束
 
 - 复合流程中每一步都应向用户报告进度。
-- 发布类操作必须经过用户确认（参考 xhs-publish 约束）。
-- 评论类操作必须经过用户确认（参考 xhs-interact 约束）。
+- 发布类操作必须经过用户确认（参考 xhs-publish）。
 - 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
-- 执行命令前必须先检查 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 或等价命令行参数是否齐全；缺少任一项时，先提示用户补齐，不要直接执行。
 - **控制整体频率**：即使使用真实账号和浏览器，频繁的自动化操作仍可能触发风控，建议分批、间隔执行，不要一次性处理大量任务。
 - 所有数据分析结果使用 markdown 表格结构化呈现。
 
 ## 工作流程
-
-以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### 竞品分析
 
@@ -80,12 +95,12 @@ metadata:
 1. 确认分析目标（关键词、竞品账号）。
 2. 搜索相关笔记：
 ```bash
-python scripts/cli.py search-feeds \
+cd <skill-root> && uv run python scripts/cli.py search-feeds \
   --keyword "目标关键词" --sort-by 最多点赞
 ```
 3. 从搜索结果中选取 3-5 篇高互动笔记，逐一获取详情：
 ```bash
-python scripts/cli.py get-feed-detail \
+cd <skill-root> && uv run python scripts/cli.py get-feed-detail \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
 ```
 4. 整理分析报告，包含：
@@ -109,11 +124,11 @@ python scripts/cli.py get-feed-detail \
 2. 对每个关键词分别搜索：
 ```bash
 # 按最新排序，观察近期热度
-python scripts/cli.py search-feeds \
+cd <skill-root> && uv run python scripts/cli.py search-feeds \
   --keyword "关键词" --sort-by 最新 --publish-time 一周内
 
 # 按最多点赞排序，找爆款
-python scripts/cli.py search-feeds \
+cd <skill-root> && uv run python scripts/cli.py search-feeds \
   --keyword "关键词" --sort-by 最多点赞
 ```
 3. 对高互动笔记获取详情，分析内容模式。
@@ -131,7 +146,7 @@ python scripts/cli.py search-feeds \
 1. 确认创作主题。
 2. 搜索相关笔记，获取灵感：
 ```bash
-python scripts/cli.py search-feeds \
+cd <skill-root> && uv run python scripts/cli.py search-feeds \
   --keyword "主题关键词" --sort-by 最多点赞
 ```
 3. 选取 2-3 篇参考笔记，获取详情分析内容结构。
@@ -142,7 +157,7 @@ python scripts/cli.py search-feeds \
 5. 通过 `AskUserQuestion` 让用户确认最终内容。
 6. 执行发布（参考 xhs-publish 流程）：
 ```bash
-python scripts/cli.py publish \
+cd <skill-root> && uv run python scripts/cli.py publish \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --images "/abs/path/pic1.jpg" "/abs/path/pic2.jpg" \
@@ -158,29 +173,29 @@ python scripts/cli.py publish \
 1. 确认互动目标（关键词、话题领域）。
 2. 搜索目标笔记：
 ```bash
-python scripts/cli.py search-feeds \
+cd <skill-root> && uv run python scripts/cli.py search-feeds \
   --keyword "目标关键词" --sort-by 最新
 ```
 3. 筛选适合互动的笔记（中等互动量、与自身领域相关）。
 4. 获取详情，了解笔记内容：
 ```bash
-python scripts/cli.py get-feed-detail \
+cd <skill-root> && uv run python scripts/cli.py get-feed-detail \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
 ```
 5. 针对笔记内容生成有价值的评论建议。
-6. 用户确认评论内容后发送：
+6. 发送评论：
 ```bash
-python scripts/cli.py post-comment \
+cd <skill-root> && uv run python scripts/cli.py post-comment \
   --feed-id FEED_ID \
   --xsec-token XSEC_TOKEN \
   --content "评论内容"
 ```
 7. 可选：点赞或收藏：
 ```bash
-python scripts/cli.py like-feed \
+cd <skill-root> && uv run python scripts/cli.py like-feed \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
 
-python scripts/cli.py favorite-feed \
+cd <skill-root> && uv run python scripts/cli.py favorite-feed \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
 ```
 8. 每次互动之间保持 30-60 秒间隔。

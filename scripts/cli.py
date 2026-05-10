@@ -444,6 +444,23 @@ def cmd_search_users(args: argparse.Namespace) -> None:
         browser.close()
 
 
+def cmd_user_feeds(args: argparse.Namespace) -> None:
+    """获取用户主页 Feed，可选择加载下一批。"""
+    from xhs.user_feeds import get_user_feeds
+
+    browser, page = _connect(args)
+    try:
+        result = get_user_feeds(
+            page,
+            args.user_id,
+            args.xsec_token,
+            load_more=args.load_more,
+        )
+        _output(result)
+    finally:
+        browser.close()
+
+
 def cmd_get_feed_detail(args: argparse.Namespace) -> None:
     """获取 Feed 详情。"""
     from xhs.feed_detail import get_feed_detail
@@ -873,6 +890,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--user-id", required=True)
     sub.add_argument("--xsec-token", required=True)
     sub.set_defaults(func=cmd_user_profile)
+
+    # user-feeds
+    sub = subparsers.add_parser("user-feeds", help="获取用户主页 Feed，可加载下一批")
+    sub.add_argument("--user-id", required=True)
+    sub.add_argument("--xsec-token", required=True)
+    sub.add_argument("--load-more", action="store_true", help="触发一次加载更多")
+    sub.set_defaults(func=cmd_user_feeds)
 
     # post-comment
     sub = subparsers.add_parser("post-comment", help="发表评论")

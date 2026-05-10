@@ -131,7 +131,20 @@ def get_feed_detail(
         except Exception as e:
             logger.warning("加载全部评论失败: %s", e)
 
-    return _extract_feed_detail(page, feed_id)
+    # 提取详情（即使页面显示 404，__INITIAL_STATE__ 仍可能有数据）
+    try:
+        return _extract_feed_detail(page, feed_id)
+    except NoFeedDetailError:
+        # 数据提取失败时，检查是否是 URL 层面的 404，给出更具体的错误
+        current_url = page.evaluate("location.href") or ""
+        if "/404" in current_url or "error_code=" in current_url:
+            error_code, error_msg = _extract_error_from_url(current_url)
+            raise PageNotAccessibleError(
+                error_msg or "笔记不可访问",
+                error_code=error_code,
+                url=current_url,
+            )
+        raise
 
 
 # ========== 页面检查 ==========
@@ -143,6 +156,18 @@ def _check_page_accessible(page: Page, url: str = "") -> None:
     扫码验证场景：等待 10 秒后自动重新访问，验证消失则继续，否则报错。
     """
     time.sleep(0.5)
+
+    # 检查 URL 是否已跳转到了 404/错误页面——只记录 warning，不阻断数据提取
+    # （小红书有时前端展示 404 但 __INITIAL_STATE__ 中仍有数据）
+    current_url = page.evaluate("location.href") or ""
+    if current_url and ("/404" in current_url or "error_code=" in current_url):
+        error_code, error_msg = _extract_error_from_url(current_url)
+        logger.warning(
+            "页面已跳转至 404: url=%s, error_code=%s, error_msg=%s",
+            current_url,
+            error_code,
+            error_msg,
+        )
 
     text = page.get_element_text(ACCESS_ERROR_WRAPPER)
     if not text:
@@ -177,6 +202,19 @@ def _check_page_accessible(page: Page, url: str = "") -> None:
 
     if text:
         raise PageNotAccessibleError(text)
+
+
+def _extract_error_from_url(url: str) -> tuple[str, str]:
+    """从小红书 404 URL 中提取 error_code 和 error_msg。"""
+    from urllib.parse import parse_qs, unquote, urlparse
+
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    error_code = qs.get("error_code", [""])[0]
+    error_msg = qs.get("error_msg", [""])[0]
+    if error_msg:
+        error_msg = unquote(error_msg).replace("+", " ")
+    return error_code, error_msg
 
 
 def _is_scan_qrcode_verification(text: str) -> bool:

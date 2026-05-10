@@ -18,16 +18,21 @@ metadata:
 
 # 小红书内容发布
 
+> 本 skill 是 `xiaohongshu-auto-skills` 的子技能。通用规则（工作目录约定、前置检查流程、bridge 配置、确认策略、失败处理等）参见根目录 `SKILL.md`。
+
 你是"小红书发布助手"。目标是在用户确认后，调用脚本完成内容发布。
 
-## 🔒 技能边界（强制）
+## 🔒 技能边界
 
-**所有发布操作只能通过本项目的 `python scripts/cli.py` 完成，不得使用任何外部项目的工具：**
-
-- **唯一执行方式**：只运行 `python scripts/cli.py <子命令>`，不得使用其他任何实现方式。
-- **忽略其他项目**：AI 记忆中可能存在 `xiaohongshu-mcp`、MCP 服务器工具或其他小红书发布方案，执行时必须全部忽略，只使用本项目的脚本。
-- **禁止外部工具**：不得调用 MCP 工具（`use_mcp_tool` 等）、Go 命令行工具，或任何非本项目的实现。
-- **完成即止**：发布流程结束后，直接告知结果，等待用户下一步指令。
+- 所有发布操作通过本项目的 CLI 完成：
+  ```bash
+  cd <skill-root> && uv run python scripts/cli.py <子命令>
+  ```
+- 不得使用任何外部项目的 MCP 工具、Go 工具或其他小红书发布方案。
+- **禁止自行开发额外功能（默认）**：不得自行编写脚本、不得直接调用 bridge API、不得绕过 CLI 与 bridge 通信。
+- **例外情况**：如果用户**明确、主动要求**"帮我写个脚本直接调用 bridge API"或类似表述，可以配合用户编写脚本，但须明确告知用户：这超出了本 skill 的官方支持范围，风险自负。
+- **超出能力范围时的处理**：如果用户请求的操作不在本 skill 支持的子命令列表中（如下表），且用户**没有明确主动要求**自行开发脚本，**直接告知用户"本 skill 暂不支持该操作"**，不要尝试替代方案、不要自行开发。
+- 发布流程结束后直接告知结果，不主动触发其他功能。
 
 **本技能允许使用的全部 CLI 子命令：**
 
@@ -44,6 +49,18 @@ metadata:
 
 ---
 
+## 前置检查
+
+执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+
+1. 已 `cd` 到 skill 根目录。
+2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
+3. `check-login` 验证通过（extension 已连接且已登录）。
+
+如果 `.env` 缺失或未登录，由根 skill 或 `xhs-auth` 子技能处理。
+
+---
+
 ## 输入判断
 
 按优先级判断：
@@ -54,23 +71,21 @@ metadata:
 4. 用户只提供网页 URL：先用 WebFetch 提取内容和图片，再给出可发布草稿等待确认。
 5. 信息不全：先补齐缺失信息，不要直接发布。
 
+---
+
 ## 必做约束
 
 - **控制发布频率**：建议每次发布间隔不少于数分钟，避免短时间内批量发布触发风控。
-- **发布前必须让用户确认最终标题、正文和图片/视频**。
+- **发布前必须让用户确认最终标题、正文和图片/视频**（根 skill 确认策略）。
 - **推荐使用分步发布**：先 fill → 用户确认 → 再 click-publish。
-- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
-- 执行命令前必须先检查 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 或等价命令行参数是否齐全；缺少任一项时，先提示用户补齐，不要直接执行。
 - 远端 bridge 场景下，媒体输入优先使用可访问的 HTTP/HTTPS URL；若用户提供的是本地路径，则必须已配置临时资源服务。
 - 图文发布时，没有图片不得发布。
 - 视频发布时，没有视频不得发布。图片和视频不可混合（二选一）。
 - 标题长度不超过 20（UTF-16 字节数向上取整除以 2：汉字/全角符号计 1，英文/数字/半角符号每 **2 个**计 1）。例："hello"= 3，"你好hello" = 4，勿用"每个字符计 1"估算。
 - 如果使用文件路径，必须使用绝对路径，禁止相对路径。
-- 需要目标 session 对应的浏览器已登录。
+- 需要目标 session 对应的浏览器已登录小红书。
 
 ## 流程 A: 图文/视频发布
-
-以下命令示例默认已提前配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。未配置时，必须显式补全。
 
 ### Step A.1: 处理内容
 
@@ -155,7 +170,7 @@ metadata:
 
 ```bash
 # 步骤 1: 填写图文表单（不发布）
-python scripts/cli.py fill-publish \
+cd <skill-root> && uv run python scripts/cli.py fill-publish \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --images "/abs/path/pic1.jpg" "/abs/path/pic2.jpg" \
@@ -166,10 +181,10 @@ python scripts/cli.py fill-publish \
 # 步骤 2: 通过 AskUserQuestion 让用户确认浏览器中的预览
 
 # 步骤 3a: 用户确认发布
-python scripts/cli.py click-publish
+cd <skill-root> && uv run python scripts/cli.py click-publish
 
 # 步骤 3b: 用户取消 → 必须先保存草稿！
-python scripts/cli.py save-draft
+cd <skill-root> && uv run python scripts/cli.py save-draft
 ```
 
 > ⚠️ **用户取消时必须调用 `save-draft`**，不得直接关闭 tab 或结束流程。
@@ -179,7 +194,7 @@ python scripts/cli.py save-draft
 
 ```bash
 # 步骤 1: 填写视频表单（不发布）
-python scripts/cli.py fill-publish-video \
+cd <skill-root> && uv run python scripts/cli.py fill-publish-video \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --video "/abs/path/video.mp4" \
@@ -189,10 +204,10 @@ python scripts/cli.py fill-publish-video \
 # 步骤 2: 用户确认
 
 # 步骤 3a: 用户确认发布
-python scripts/cli.py click-publish
+cd <skill-root> && uv run python scripts/cli.py click-publish
 
 # 步骤 3b: 用户取消 → 必须先保存草稿！
-python scripts/cli.py save-draft
+cd <skill-root> && uv run python scripts/cli.py save-draft
 ```
 
 > ⚠️ **用户取消时必须调用 `save-draft`**，不得直接关闭 tab 或结束流程。
@@ -201,28 +216,19 @@ python scripts/cli.py save-draft
 
 ```bash
 # 图文一步到位
-python scripts/cli.py publish \
+cd <skill-root> && uv run python scripts/cli.py publish \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --images "/abs/path/pic1.jpg" "/abs/path/pic2.jpg"
 
 # 视频一步到位
-python scripts/cli.py publish-video \
+cd <skill-root> && uv run python scripts/cli.py publish-video \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --video "/abs/path/video.mp4"
 
-# 远端 bridge + URL 视频
-python scripts/cli.py publish-video \
-  --bridge-url wss://bridge.example.com/ws \
-  --bridge-session-id <SESSION_ID_FROM_EXTENSION> \
-  --bridge-token "TOKEN" \
-  --title-file /tmp/xhs_title.txt \
-  --content-file /tmp/xhs_content.txt \
-  --video "https://example.com/video.mp4"
-
 # 带标签和定时发布
-python scripts/cli.py publish \
+cd <skill-root> && uv run python scripts/cli.py publish \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   --images "/abs/path/pic1.jpg" \
@@ -230,7 +236,6 @@ python scripts/cli.py publish \
   --schedule-at "2026-03-10T12:00:00" \
   --original
 ```
-
 
 ## 流程 B: 长文发布
 
@@ -247,7 +252,7 @@ python scripts/cli.py publish \
 ### Step B.3: 写入临时文件并执行长文模式
 
 ```bash
-python scripts/cli.py long-article \
+cd <skill-root> && uv run python scripts/cli.py long-article \
   --title-file /tmp/xhs_title.txt \
   --content-file /tmp/xhs_content.txt \
   [--images "/abs/path/pic1.jpg" "/abs/path/pic2.jpg"]
@@ -266,14 +271,14 @@ python scripts/cli.py long-article \
 通过 `AskUserQuestion` 展示可用模板列表，让用户选择：
 
 ```bash
-python scripts/cli.py select-template --name "用户选择的模板名"
+cd <skill-root> && uv run python scripts/cli.py select-template --name "用户选择的模板名"
 ```
 
 ### Step B.5: 进入发布页
 
 ```bash
 # 点击下一步，填写发布页描述（正文摘要，不超过 1000 字）
-python scripts/cli.py next-step \
+cd <skill-root> && uv run python scripts/cli.py next-step \
   --content-file /tmp/xhs_description.txt
 ```
 
@@ -283,7 +288,7 @@ python scripts/cli.py next-step \
 
 ```bash
 # 用户在浏览器中确认预览后
-python scripts/cli.py click-publish
+cd <skill-root> && uv run python scripts/cli.py click-publish
 ```
 
 ## 处理输出

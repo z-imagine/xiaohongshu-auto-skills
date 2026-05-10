@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import json
 import sys
 from pathlib import Path
@@ -47,6 +48,7 @@ from xhs.publish_long_article import (  # noqa: E402
 from xhs.publish_video import fill_publish_video_form, publish_video_content  # noqa: E402
 from xhs.search import search_feeds  # noqa: E402
 from xhs.types import CommentLoadConfig, FilterOption, PublishImageContent, PublishVideoContent  # noqa: E402
+from xhs.user_feeds import get_user_feeds  # noqa: E402
 from xhs.user_search import search_users  # noqa: E402
 from xhs.user_profile import get_user_profile  # noqa: E402
 
@@ -77,9 +79,11 @@ class InProcessBridgePage(BridgePage):
                 self._router.execute_cli_rpc(message),
                 self._loop,
             )
-            response = future.result(timeout=95)
+            response = future.result(timeout=92)
         except BridgeError as exc:
             raise RuntimeError(f"Bridge 错误[{exc.code}]: {exc.message}") from exc
+        except concurrent.futures.TimeoutError as exc:
+            raise RuntimeError("Bridge 错误[COMMAND_TIMEOUT]: 命令执行超时（92s）") from exc
         except OSError as exc:
             raise RuntimeError(f"无法连接到 bridge server: {exc}") from exc
         return response.get("result")
@@ -109,15 +113,49 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
             raise BridgeError("INVALID_ARGUMENT", f"字段 {field} 必须是数组")
         return [str(item) for item in value if str(item).strip()]
 
+    def _classify_business_error(exc: Exception, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        """将业务异常分类为结构化响应和 HTTP 状态码。"""
+        from xhs.errors import NoFeedDetailError, NotLoggedInError, PageNotAccessibleError
+
+        if isinstance(exc, PageNotAccessibleError):
+            payload: dict[str, Any] = {
+                "error": str(exc),
+                "error_code": "PAGE_NOT_ACCESSIBLE",
+                "xhs_error_code": exc.error_code,
+                "xhs_url": exc.url,
+            }
+            # 把请求上下文也带回去，方便调用方排查
+            for key in ("feed_id", "xsec_token", "user_id", "keyword"):
+                if key in body:
+                    payload[key] = body[key]
+            return payload, 404
+
+        if isinstance(exc, NoFeedDetailError):
+            payload = {
+                "error": "笔记不存在或已被删除",
+                "error_code": "FEED_NOT_FOUND",
+            }
+            for key in ("feed_id", "xsec_token"):
+                if key in body:
+                    payload[key] = body[key]
+            return payload, 404
+
+        if isinstance(exc, NotLoggedInError):
+            return {"error": str(exc), "error_code": "NOT_LOGGED_IN"}, 401
+
+        # 兜底：未知业务异常
+        return {"error": str(exc), "error_code": "BUSINESS_ERROR"}, 500
+
     async def _run_business(
         request: web.Request,
         handler: Callable[[InProcessBridgePage, dict[str, Any]], dict[str, Any]],
     ) -> web.Response:
+        body: dict[str, Any] = {}
         try:
             body = await _read_body(request)
             if not router._is_authorized(body):
                 error = BridgeError("AUTH_FAILED", "Bridge 鉴权失败")
-                return web.json_response(router.error_payload(error), status=router.error_status_code(error))
+                return _json_response(router.error_payload(error), status=router.error_status_code(error))
 
             session_id = _require_str(body, "session_id")
             token = str(body.get("token") or "")
@@ -128,8 +166,17 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         except BridgeError as exc:
             return _json_response(router.error_payload(exc), status=router.error_status_code(exc))
         except Exception as exc:
-            error = BridgeError("BUSINESS_ERROR", str(exc))
-            return _json_response(router.error_payload(error), status=router.error_status_code(error))
+            # 记录包含请求上下文的详细错误日志
+            logger.error(
+                "业务处理失败: exc=%s, session_id=%s, method=%s, body=%s",
+                exc,
+                body.get("session_id", "-"),
+                body.get("method", "-"),
+                {k: v for k, v in body.items() if k not in ("token",)},
+                exc_info=True,
+            )
+            payload, status = _classify_business_error(exc, body)
+            return _json_response(payload, status=status)
 
     def handle_check_login(page: InProcessBridgePage, _body: dict[str, Any]) -> dict[str, Any]:
         png_bytes, _b64_orig, already = fetch_qrcode(page)
@@ -251,6 +298,14 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         )
         return profile.to_dict()
 
+    def handle_user_feeds(page: InProcessBridgePage, body: dict[str, Any]) -> dict[str, Any]:
+        return get_user_feeds(
+            page,
+            _require_str(body, "user_id"),
+            _require_str(body, "xsec_token"),
+            load_more=bool(body.get("load_more", False)),
+        )
+
     def handle_post_comment(page: InProcessBridgePage, body: dict[str, Any]) -> dict[str, Any]:
         post_comment(
             page,
@@ -370,6 +425,7 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         ("search-users", handle_search_users),
         ("get-feed-detail", handle_get_feed_detail),
         ("user-profile", handle_user_profile),
+        ("user-feeds", handle_user_feeds),
         ("post-comment", handle_post_comment),
         ("reply-comment", handle_reply_comment),
         ("like-feed", handle_like_feed),

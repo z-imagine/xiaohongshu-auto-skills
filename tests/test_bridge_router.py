@@ -63,7 +63,8 @@ def test_session_id_is_allocated_for_extension_when_missing() -> None:
     router = BridgeRouter(token="")
     session_id, assigned = router._sessions.allocate_session_id("")
     assert assigned is True
-    assert session_id == "default"
+    assert session_id != "default"
+    assert session_id.startswith("session-")
 
     router._sessions.register_extension(session_id, FakeSocket(), "1.0.0")
     next_session_id, next_assigned = router._sessions.allocate_session_id("")

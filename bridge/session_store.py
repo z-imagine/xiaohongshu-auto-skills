@@ -29,9 +29,6 @@ class SessionStore:
         if candidate:
             return candidate, False
 
-        if "default" not in self._extensions and "default" not in self._session_meta:
-            return "default", True
-
         while True:
             candidate = f"session-{uuid.uuid4().hex[:12]}"
             if candidate not in self._extensions and candidate not in self._session_meta:
