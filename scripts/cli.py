@@ -1,7 +1,7 @@
 """统一 CLI 入口（Extension Bridge 版本）.
 
 通过浏览器扩展 Bridge 连接用户已打开的浏览器，无需 Chrome 调试端口。
-本地模式下可自动启动 bridge；远端模式下需要用户自行配置 extension 连接。
+bridge server 与浏览器扩展必须由用户预先启动并连接；CLI 不自动启动本地 bridge 或 Chrome。
 
 输出: JSON（ensure_ascii=False）
 退出码: 0=成功, 1=未登录, 2=错误
@@ -73,79 +73,21 @@ def _is_local_bridge(bridge_url: str) -> bool:
     return host in {"", "localhost", "127.0.0.1", "::1"}
 
 
-def _ensure_bridge_ready(bridge_url: str, session_id: str, token: str) -> None:
-    """确保 bridge server 在运行、浏览器扩展已连接。若未就绪则自动启动。"""
-    import subprocess
-    import time
-
+def _ensure_bridge_ready(bridge_url: str, session_id: str, token: str) -> bool:
+    """Return whether the configured bridge server and extension are ready."""
     from xhs.bridge import BridgePage
 
     page = BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
-    local_bridge = _is_local_bridge(bridge_url)
-
-    # ── 1. 检查 bridge server ────────────────────────────────────────
     if not page.is_server_running():
-        if not local_bridge:
-            logger.warning("Bridge server 未运行，请确认远端 bridge 地址可访问: %s", bridge_url)
-            return
-
-        logger.info("Bridge server 未运行，正在启动...")
-        kwargs: dict = {}
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-        subprocess.Popen([sys.executable, "-m", "bridge.server"], **kwargs)
-        for _ in range(10):
-            time.sleep(1)
-            if page.is_server_running():
-                logger.info("Bridge server 已启动")
-                break
-        else:
-            logger.warning("Bridge server 启动超时，请手动运行 python -m bridge.server")
-            return
-
-    # ── 2. 检查扩展是否连接 ──────────────────────────────────────────
-    if page.is_extension_connected():
-        return
-
-    if not local_bridge:
+        logger.warning("Bridge server 未运行，请确认 bridge 已由用户启动: %s", bridge_url)
+        return False
+    if not page.is_extension_connected():
         logger.warning(
             "目标 session 尚未连接浏览器扩展，请在目标浏览器中配置并连接 extension: session=%s",
             session_id,
         )
-        return
-
-    logger.info("浏览器扩展未连接，正在打开 Chrome...")
-    _open_chrome()
-
-    for _ in range(20):
-        time.sleep(1)
-        if page.is_extension_connected():
-            logger.info("浏览器扩展已连接")
-            return
-    logger.warning("等待扩展连接超时，请确认 Chrome 已安装 XHS Bridge 扩展并已启用")
-
-
-def _open_chrome() -> None:
-    """尝试启动 Chrome 浏览器。"""
-    import subprocess
-
-    candidates = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            subprocess.Popen([path])
-            return
-    # macOS / Linux fallback
-    for cmd in [["open", "-a", "Google Chrome"], ["google-chrome"], ["chromium-browser"]]:
-        try:
-            subprocess.Popen(cmd)
-            return
-        except FileNotFoundError:
-            continue
-    logger.warning("找不到 Chrome，请手动打开浏览器")
+        return False
+    return True
 
 
 def _connect(args: argparse.Namespace):
@@ -153,28 +95,84 @@ def _connect(args: argparse.Namespace):
     from xhs.bridge import BridgePage
 
     bridge_url, session_id, token = _resolve_bridge_settings(args)
-    _ensure_bridge_ready(bridge_url, session_id, token)
+    if not _ensure_bridge_ready(bridge_url, session_id, token):
+        raise RuntimeError("bridge 或浏览器扩展未就绪，已停止执行")
+    if getattr(args, "_bridge_settings_from_explicit_args", False):
+        from xhs.config import BridgeConfig, save_bridge_config
+
+        save_bridge_config(
+            BridgeConfig(
+                bridge_url=bridge_url,
+                bridge_token=token,
+                bridge_session_id=session_id,
+            ),
+        )
     return _DummyBrowser(), BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
 
 
 def _resolve_bridge_settings(args: argparse.Namespace) -> tuple[str, str, str]:
-    """Resolve bridge connection settings from args and environment."""
-    bridge_url = getattr(args, "bridge_url", os.getenv("XHS_BRIDGE_URL", ""))
-    session_id = getattr(
-        args,
-        "bridge_session_id",
-        os.getenv("XHS_BRIDGE_SESSION_ID", ""),
-    )
-    token = getattr(args, "bridge_token", os.getenv("XHS_BRIDGE_TOKEN", ""))
-    if not bridge_url:
-        raise SystemExit("缺少 bridge_url，请通过 --bridge-url 或 XHS_BRIDGE_URL 指定 bridge 地址")
-    if not token:
-        raise SystemExit("缺少 bridge_token，请通过 --bridge-token 或 XHS_BRIDGE_TOKEN 指定 bridge 鉴权 token")
-    if not session_id:
-        raise SystemExit(
-            "缺少 bridge_session_id，请先让浏览器扩展连接 bridge，并使用扩展展示的 Session ID 作为 --bridge-session-id 或 XHS_BRIDGE_SESSION_ID",
+    """Resolve bridge settings from complete CLI arguments or user config."""
+    from xhs.config import load_bridge_config
+
+    direct_values = {
+        "bridge_url": getattr(args, "bridge_url", None),
+        "bridge_token": getattr(args, "bridge_token", None),
+        "bridge_session_id": getattr(args, "bridge_session_id", None),
+    }
+    specified = [value is not None for value in direct_values.values()]
+    if any(specified):
+        if not all(isinstance(value, str) and value.strip() for value in direct_values.values()):
+            raise SystemExit(
+                "显式 bridge 配置必须同时提供 --bridge-url、--bridge-token 和 --bridge-session-id",
+            )
+        args._bridge_settings_from_explicit_args = True
+        return (
+            direct_values["bridge_url"],
+            direct_values["bridge_session_id"],
+            direct_values["bridge_token"],
         )
-    return bridge_url, session_id, token
+
+    config = load_bridge_config()
+    if config is None:
+        raise SystemExit(
+            "缺少 bridge 配置，请使用 config set 保存配置，或同时提供 "
+            "--bridge-url、--bridge-token 和 --bridge-session-id",
+        )
+    args._bridge_settings_from_explicit_args = False
+    return config.bridge_url, config.bridge_session_id, config.bridge_token
+
+
+def cmd_config_set(args: argparse.Namespace) -> None:
+    """Validate and persist a bridge connection configuration."""
+    from xhs.bridge import BridgePage
+    from xhs.config import BridgeConfig, save_bridge_config
+
+    config = BridgeConfig(
+        bridge_url=args.bridge_url,
+        bridge_token=args.bridge_token,
+        bridge_session_id=args.bridge_session_id,
+    )
+    page = BridgePage(
+        bridge_url=config.bridge_url,
+        session_id=config.bridge_session_id,
+        token=config.bridge_token,
+    )
+    if not page.is_server_running():
+        raise RuntimeError("无法连接 bridge server，配置未保存")
+    if not page.is_extension_connected():
+        raise RuntimeError("目标浏览器扩展未连接，配置未保存")
+
+    path = save_bridge_config(config)
+    _output({"success": True, "config_path": str(path)})
+
+
+def cmd_config_status(args: argparse.Namespace) -> None:
+    """Report whether a complete user configuration exists without secrets."""
+    from xhs.config import config_path, load_bridge_config
+
+    path = config_path()
+    config = load_bridge_config(path)
+    _output({"configured": config is not None, "config_path": str(path)})
 
 
 # _connect_saved_tab / _connect_existing 在 bridge 模式下与 _connect 等价
@@ -878,21 +876,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--bridge-url",
-        default=os.getenv("XHS_BRIDGE_URL", ""),
-        help="Bridge server WebSocket 地址（必填，可用 XHS_BRIDGE_URL）",
+        default=None,
+        help="Bridge server WebSocket 地址（需与另外两项 bridge 参数同时提供）",
     )
     parser.add_argument(
         "--bridge-session-id",
-        default=os.getenv("XHS_BRIDGE_SESSION_ID", ""),
-        help="目标浏览器的 Session ID（由扩展连接 bridge 后展示）",
+        default=None,
+        help="目标浏览器的 Session ID（需与另外两项 bridge 参数同时提供）",
     )
     parser.add_argument(
         "--bridge-token",
-        default=os.getenv("XHS_BRIDGE_TOKEN", ""),
-        help="Bridge 鉴权 token（必填，可用 XHS_BRIDGE_TOKEN）",
+        default=None,
+        help="Bridge 鉴权 token（需与另外两项 bridge 参数同时提供）",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # config
+    sub = subparsers.add_parser("config", help="管理用户级 bridge 配置")
+    config_subparsers = sub.add_subparsers(dest="config_command", required=True)
+    config_set = config_subparsers.add_parser("set", help="验证并保存 bridge 配置")
+    config_set.add_argument("--bridge-url", required=True, help="Bridge server WebSocket 地址")
+    config_set.add_argument("--bridge-session-id", required=True, help="目标浏览器的 Session ID")
+    config_set.add_argument("--bridge-token", required=True, help="Bridge 鉴权 token")
+    config_set.set_defaults(func=cmd_config_set)
+    config_status = config_subparsers.add_parser(
+        "status",
+        help="查看 bridge 配置状态（不显示秘密）",
+    )
+    config_status.set_defaults(func=cmd_config_status)
 
     # check-login
     sub = subparsers.add_parser("check-login", help="检查登录状态")

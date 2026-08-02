@@ -47,17 +47,19 @@ metadata:
 
 ## 前置检查
 
-执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+执行本技能任何命令前，读取并遵循 [bridge 配置与前置检查](../../references/bridge-configuration.md)：
 
 1. 已 `cd` 到 skill 根目录。
-2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
+2. 使用完整显式参数或用户级配置。
 3. `check-login` 验证通过（extension 已连接且已登录）。
 
-如果 `.env` 缺失或未登录，由根 skill 或 `xhs-auth` 子技能处理。
+未配置或未登录时停止，并按根 skill 与 `xhs-auth` 流程处理。
 
 ---
 
 ## 输入判断
+
+缺少 `feed_id`、`xsec_token`、评论内容或回复目标时，读取并使用 [用户交互规范](../../references/user-interaction.md) 收集信息后再执行。
 
 按优先级判断：
 
@@ -143,6 +145,8 @@ cd <skill-root> && uv run python scripts/cli.py favorite-feed \
 ## 互动策略建议
 
 当用户需要批量互动时，建议：
+
+执行前读取并遵循 [用户交互规范](../../references/user-interaction.md) 的批量互动确认、目标列表和停止规则。
 
 1. 先搜索目标内容（xhs-explore）。
 2. 浏览搜索结果，选择要互动的笔记。

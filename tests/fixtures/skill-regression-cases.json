@@ -1,0 +1,65 @@
+[
+  {
+    "prompt": "搜索笔记并总结",
+    "skill": "xhs-explore",
+    "requires_bridge": true,
+    "requires_login": true,
+    "requires_confirmation": false,
+    "allowed_commands": ["check-login", "search-feeds", "get-feed-detail"],
+    "stop_condition": "bridge 不可用、未登录或搜索结果为空时停止并报告"
+  },
+  {
+    "prompt": "直接发布这组图片",
+    "skill": "xhs-publish",
+    "requires_bridge": true,
+    "requires_login": true,
+    "requires_confirmation": false,
+    "allowed_commands": ["check-login", "fill-publish", "click-publish"],
+    "stop_condition": "缺少标题、正文或图片时停止并补充信息"
+  },
+  {
+    "prompt": "取消发布",
+    "skill": "xhs-publish",
+    "requires_bridge": true,
+    "requires_login": true,
+    "requires_confirmation": true,
+    "allowed_commands": ["save-draft"],
+    "stop_condition": "询问保存草稿或放弃；仅保存时执行 save-draft"
+  },
+  {
+    "prompt": "批量点赞 30 条",
+    "skill": "xhs-content-ops",
+    "requires_bridge": true,
+    "requires_login": true,
+    "requires_confirmation": true,
+    "allowed_commands": ["check-login", "like-feed"],
+    "stop_condition": "未展示目标列表、超出默认上限或出现风险信号时停止"
+  },
+  {
+    "prompt": "检查登录并扫码",
+    "skill": "xhs-auth",
+    "requires_bridge": true,
+    "requires_login": false,
+    "requires_confirmation": false,
+    "allowed_commands": ["check-login", "wait-login", "get-qrcode"],
+    "stop_condition": "扩展未连接或二维码超时后停止并报告"
+  },
+  {
+    "prompt": "分析竞品",
+    "skill": "xhs-content-ops",
+    "requires_bridge": true,
+    "requires_login": true,
+    "requires_confirmation": false,
+    "allowed_commands": ["check-login", "search-feeds", "get-feed-detail"],
+    "stop_condition": "搜索无结果或笔记不可访问时停止并报告"
+  },
+  {
+    "prompt": "研究某话题后发布",
+    "skill": "xhs-content-ops",
+    "requires_bridge": true,
+    "requires_login": true,
+    "requires_confirmation": true,
+    "allowed_commands": ["check-login", "search-feeds", "get-feed-detail", "fill-publish", "click-publish"],
+    "stop_condition": "发布前内容或媒体不完整、用户未确认或出现风险信号时停止"
+  }
+]

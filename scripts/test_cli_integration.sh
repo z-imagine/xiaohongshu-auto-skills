@@ -6,28 +6,6 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${PROJECT_DIR}"
 
-require_env() {
-  local name="$1"
-  if [[ -z "${!name:-}" ]]; then
-    echo "缺少 ${name}；请先在环境变量或 .env 中配置。" >&2
-    exit 2
-  fi
-}
-
-load_env_file() {
-  if [[ -f ".env" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source ".env"
-    set +a
-  fi
-}
-
-load_env_file
-require_env "XHS_BRIDGE_URL"
-require_env "XHS_BRIDGE_TOKEN"
-require_env "XHS_BRIDGE_SESSION_ID"
-
 if [[ -x ".venv/bin/python" ]]; then
   CLI=(".venv/bin/python" "scripts/cli.py")
 else
@@ -79,9 +57,8 @@ probe_readonly_feed() {
 
 LOGGED_IN=false
 echo "CLI 集成冒烟测试（不会执行互动或发布）"
-echo "Bridge: ${XHS_BRIDGE_URL}"
-echo "Session: ${XHS_BRIDGE_SESSION_ID}"
 
+run_step "确认用户级 bridge 配置已就绪" config status
 run_step "确认 NetLogger 命令已注册" --help
 check_login
 run_step "启用 NetLogger" enable-netlog

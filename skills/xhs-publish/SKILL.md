@@ -43,6 +43,7 @@ metadata:
 | `publish` | 图文一步发布 |
 | `publish-video` | 视频一步发布 |
 | `click-publish` | 点击发布按钮 |
+| `save-draft` | 保存已填写的发布草稿 |
 | `long-article` | 填写长文内容并触发排版 |
 | `select-template` | 选择长文排版模板 |
 | `next-step` | 进入长文发布页并填写描述 |
@@ -51,13 +52,13 @@ metadata:
 
 ## 前置检查
 
-执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+执行本技能任何命令前，读取并遵循 [bridge 配置与前置检查](../../references/bridge-configuration.md)：
 
 1. 已 `cd` 到 skill 根目录。
-2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
+2. 使用完整显式参数或用户级配置。
 3. `check-login` 验证通过（extension 已连接且已登录）。
 
-如果 `.env` 缺失或未登录，由根 skill 或 `xhs-auth` 子技能处理。
+未配置或未登录时停止，并按根 skill 与 `xhs-auth` 流程处理。
 
 ---
 
@@ -68,8 +69,8 @@ metadata:
 1. 用户说"发长文 / 写长文 / 长文模式"：进入 **长文发布流程（流程 B）**。
 2. 用户已提供 `标题 + 正文 + 视频（本地路径或 URL）`：进入 **视频发布流程（流程 A.2）**。
 3. 用户已提供 `标题 + 正文 + 图片（本地路径或 URL）`：进入 **图文发布流程（流程 A.1）**。
-4. 用户只提供网页 URL：先用 WebFetch 提取内容和图片，再给出可发布草稿等待确认。
-5. 信息不全：先补齐缺失信息，不要直接发布。
+4. 用户只提供网页 URL：本 skill 不提取网页内容或图片；要求用户提供标题、正文以及图片或视频。
+5. 信息不全：读取并使用 [用户交互规范](../../references/user-interaction.md) 补齐缺失信息，不要直接发布。
 
 ---
 
@@ -91,22 +92,6 @@ metadata:
 
 #### 完整内容模式
 直接使用用户提供的标题和正文。
-
-#### URL 提取模式
-1. 使用 WebFetch 提取网页内容。
-2. 提取关键信息：标题、正文、图片 URL。
-3. 适当总结内容，保持语言自然、适合小红书阅读习惯。
-4. 如果提取不到图片，告知用户手动获取。
-
-#### 图片提取规则（URL 模式下，必须遵守）
-
-网页常用懒加载技术，`img` 标签的 `src` 可能是占位图，真实图片在 `data-src`：
-
-- **优先取 `data-src`**：若 `img` 标签同时有 `src` 和 `data-src`，以 `data-src` 为准（这是真实图片）。
-- **跳过占位图**：`src` 路径含 `/shims/`、`/placeholder`、`/theme/`、`/themes/`、`16x9.png`、`1x1.png` 等的图片为占位符，直接忽略。
-- **只取内容图**：只选正文主体区域的截图/配图，跳过网站 logo、图标、视频封面缩略图。
-- **格式验证**：图片 URL 应以 `.jpg`、`.jpeg`、`.png`、`.webp`、`.gif` 结尾，否则跳过。
-- **不要重试猜测**：按上述规则提取图片后直接使用，如果图片确实为空，告知用户手动提供，不要反复尝试不同的图片 URL。
 
 ### Step A.2: 内容检查
 
@@ -134,7 +119,7 @@ metadata:
 
 ### Step A.3: 用户确认
 
-通过 `AskUserQuestion` 展示即将发布的内容（标题、正文、图片/视频），获得明确确认后继续。
+读取并使用 [用户交互规范](../../references/user-interaction.md) 定义的工具展示即将发布的内容（标题、正文、图片/视频），获得明确确认后继续。
 
 ### Step A.4: 写入临时文件
 
@@ -178,17 +163,17 @@ cd <skill-root> && uv run python scripts/cli.py fill-publish \
   [--schedule-at "2026-03-10T12:00:00"] \
   [--original] [--visibility "公开可见"]
 
-# 步骤 2: 通过 AskUserQuestion 让用户确认浏览器中的预览
+# 步骤 2: 读取并使用 [用户交互规范](../../references/user-interaction.md) 让用户确认浏览器中的预览
 
 # 步骤 3a: 用户确认发布
 cd <skill-root> && uv run python scripts/cli.py click-publish
 
-# 步骤 3b: 用户取消 → 必须先保存草稿！
+# 步骤 3b: 用户取消 → 询问“保存草稿”或“放弃”
+# 仅当用户选择保存草稿时执行：
 cd <skill-root> && uv run python scripts/cli.py save-draft
 ```
 
-> ⚠️ **用户取消时必须调用 `save-draft`**，不得直接关闭 tab 或结束流程。
-> 直接关闭 tab 会导致内容丢失，草稿不会保存到小红书草稿箱。
+> 用户选择“保存草稿”时调用 `save-draft`；选择“放弃”时结束流程并明确提示未保存。
 
 视频分步发布：
 
@@ -206,11 +191,12 @@ cd <skill-root> && uv run python scripts/cli.py fill-publish-video \
 # 步骤 3a: 用户确认发布
 cd <skill-root> && uv run python scripts/cli.py click-publish
 
-# 步骤 3b: 用户取消 → 必须先保存草稿！
+# 步骤 3b: 用户取消 → 询问“保存草稿”或“放弃”
+# 仅当用户选择保存草稿时执行：
 cd <skill-root> && uv run python scripts/cli.py save-draft
 ```
 
-> ⚠️ **用户取消时必须调用 `save-draft`**，不得直接关闭 tab 或结束流程。
+> 用户选择“保存草稿”时调用 `save-draft`；选择“放弃”时结束流程并明确提示未保存。
 
 #### 一步到位发布（快捷方式）
 
@@ -247,7 +233,7 @@ cd <skill-root> && uv run python scripts/cli.py publish \
 
 ### Step B.2: 用户确认标题和正文
 
-通过 `AskUserQuestion` 确认长文内容。
+读取并使用 [用户交互规范](../../references/user-interaction.md) 确认长文内容。
 
 ### Step B.3: 写入临时文件并执行长文模式
 
@@ -268,7 +254,7 @@ cd <skill-root> && uv run python scripts/cli.py long-article \
 
 ### Step B.4: 选择排版模板
 
-通过 `AskUserQuestion` 展示可用模板列表，让用户选择：
+读取并使用 [用户交互规范](../../references/user-interaction.md) 展示可用模板列表，让用户选择：
 
 ```bash
 cd <skill-root> && uv run python scripts/cli.py select-template --name "用户选择的模板名"
@@ -318,4 +304,4 @@ cd <skill-root> && uv run python scripts/cli.py click-publish
 - **标题过长**：自动缩短标题，保持语义。
 - **页面选择器失效**：提示检查脚本中的选择器定义。
 - **模板加载超时**：长文模式下模板可能加载缓慢，等待 15 秒后超时。
-- **用户取消发布**：必须运行 `save-draft` 保存草稿，再告知用户已保存到草稿箱，不得直接关闭 tab。
+- **用户取消发布**：询问保存草稿或放弃；仅在用户选择保存时运行 `save-draft`。

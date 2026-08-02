@@ -51,13 +51,13 @@ metadata:
 
 ## 前置检查
 
-执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+执行本技能任何命令前，读取并遵循 [bridge 配置与前置检查](../../references/bridge-configuration.md)：
 
 1. 已 `cd` 到 skill 根目录。
-2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
-3. `check-login` 验证通过（extension 已连接）。
+2. `uv run python scripts/cli.py config status` 显示已配置，或本次命令完整提供 `--bridge-url`、`--bridge-token`、`--bridge-session-id`。
+3. 目标浏览器扩展已连接。
 
-如果 `.env` 缺失，由根 skill 的"首次配置流程"处理，不要在本子技能中重复询问。
+未配置时使用 `config set` 保存；认证流程本身不预先执行 `check-login`。需要向用户收集信息时，读取 [用户交互规范](../../references/user-interaction.md)。
 
 ---
 

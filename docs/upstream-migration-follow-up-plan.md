@@ -25,7 +25,7 @@
 - [ ] 记录来源版本 `b043748`。
 - [ ] 确认当前发布、点赞、收藏的已知行为。
 - [ ] 为发布和互动模块补充可 mock 的 Page 测试边界。
-- [ ] 确认 `.env`、Bridge Token、Session ID 不进入 diff、日志和测试输出。
+- [ ] 确认 Bridge Token、Session ID 不进入 diff、日志和测试输出。
 
 验收：可以在不连接真实小红书的情况下运行现有单元测试，并能明确区分“当前行为”和“来源行为”。
 
@@ -203,4 +203,3 @@ clear-netlog
 ## 当前建议
 
 建议先执行 Phase 1 和 Phase 2。NetLogger 作为 Phase 3 单独开发，确认数据脱敏、权限和测试方案后再接入 Phase 4 自动风险门禁。
-

@@ -32,7 +32,7 @@ metadata:
 - **禁止自行开发额外功能（默认）**：不得自行编写脚本、不得直接调用 bridge API、不得绕过 CLI 与 bridge 通信。
 - **例外情况**：如果用户**明确、主动要求**"帮我写个脚本直接调用 bridge API"或类似表述，可以配合用户编写脚本，但须明确告知用户：这超出了本 skill 的官方支持范围，风险自负。
 - **超出能力范围时的处理**：如果用户请求的操作不在本 skill 支持的子命令列表中（如下表），且用户**没有明确主动要求**自行开发脚本，**直接告知用户"本 skill 暂不支持该操作"**，不要尝试替代方案、不要自行开发。
-- 每个工作流步骤完成后向用户报告进度，等待确认后继续。
+- 每个工作流步骤完成后报告进度；仅在信息缺失、批量互动、发布或其他根 skill 规定的确认点暂停。涉及提问或确认时读取并使用 [用户交互规范](../../references/user-interaction.md)。
 
 **本技能允许使用的全部 CLI 子命令：**
 
@@ -50,18 +50,19 @@ metadata:
 | `publish` | 图文发布（需用户确认） |
 | `fill-publish` | 填写图文表单（分步发布） |
 | `click-publish` | 点击发布按钮 |
+| `save-draft` | 保存已填写的发布草稿 |
 
 ---
 
 ## 前置检查
 
-执行本技能任何命令前，确保根 skill 的首次运行检查已完成：
+执行本技能任何命令前，读取并遵循 [bridge 配置与前置检查](../../references/bridge-configuration.md)：
 
 1. 已 `cd` 到 skill 根目录。
-2. skill 根目录 `.env` 已包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`。
+2. 使用完整显式参数或用户级配置。
 3. `check-login` 验证通过（extension 已连接且已登录）。
 
-如果 `.env` 缺失或未登录，由根 skill 或 `xhs-auth` 子技能处理。
+未配置或未登录时停止，并按根 skill 与 `xhs-auth` 流程处理。
 
 ---
 
@@ -80,7 +81,7 @@ metadata:
 
 - 复合流程中每一步都应向用户报告进度。
 - 发布类操作必须经过用户确认（参考 xhs-publish）。
-- 使用 bridge 时，命令必须提供 `--bridge-url`、`--bridge-token`；`--bridge-session-id` 必须使用扩展连接后展示的值。
+- bridge 配置方式见 [bridge 配置与前置检查](../../references/bridge-configuration.md)。
 - **控制整体频率**：即使使用真实账号和浏览器，频繁的自动化操作仍可能触发风控，建议分批、间隔执行，不要一次性处理大量任务。
 - 所有数据分析结果使用 markdown 表格结构化呈现。
 
@@ -154,7 +155,7 @@ cd <skill-root> && uv run python scripts/cli.py search-feeds \
    - 标题（符合小红书风格，UTF-16 长度 ≤ 20）
    - 正文（段落清晰，口语化）
    - 话题标签
-5. 通过 `AskUserQuestion` 让用户确认最终内容。
+5. 读取并使用 [用户交互规范](../../references/user-interaction.md) 让用户确认最终内容。
 6. 执行发布（参考 xhs-publish 流程）：
 ```bash
 cd <skill-root> && uv run python scripts/cli.py publish \
@@ -198,13 +199,13 @@ cd <skill-root> && uv run python scripts/cli.py like-feed \
 cd <skill-root> && uv run python scripts/cli.py favorite-feed \
   --feed-id FEED_ID --xsec-token XSEC_TOKEN
 ```
-8. 每次互动之间保持 30-60 秒间隔。
+8. 以保守节奏分批执行；该节奏仅用于降低风险，不构成安全阈值（每次互动之间保持 30-60 秒间隔）。出现验证码、限流或异常页面时立即停止。
 
 ## 运营建议
 
 - **竞品分析频率**：每周 1-2 次，跟踪竞品动态。
 - **热点追踪频率**：每天 1 次，抓住时效性内容。
-- **互动频率**：每天不超过 20 条评论，避免被限流。
+- **互动频率**：从少量目标开始，按账号状态和页面反馈分批执行；没有可保证安全的固定数量阈值。（每天不超过 20 条评论，避免被限流）
 - **发布时间**：工作日 12:00-13:00、18:00-21:00 为高峰时段。
 
 ## 失败处理

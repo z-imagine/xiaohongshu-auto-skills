@@ -9,7 +9,7 @@
 运行前准备：
 
 - 浏览器扩展已重新加载并显示已连接；
-- 已在环境变量或仓库根目录 `.env` 中配置 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID`；
+- 已通过 `scripts/cli.py config set` 保存 bridge URL、Token 与 Session ID；
 - 当前目录使用本分支的客户端代码。
 
 执行：

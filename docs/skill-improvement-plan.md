@@ -8,51 +8,40 @@
 
 本项目是小红书真实账号自动化 skill。认证、浏览、互动、发布，以及基于实时搜索结果的竞品/热点运营，均属于账号操作，需要 bridge 与目标浏览器会话。skill 不承担纯文案、标题优化或脱离小红书实时数据的内容分析。
 
-实施以两个已知事实为前提：目标平台对根 `SKILL.md` 与 `skills/*/SKILL.md` 的发现方式尚待验证；skill 文档对 bridge 参数和本地 bridge 自动启动的表述须与 CLI 的实际行为对齐。
+实施保持现有的根 `SKILL.md` 与五个 `skills/*/SKILL.md` 子 skill 结构；skill 文档对 bridge 参数和本地 bridge 自动启动的表述须与 CLI 的实际行为对齐。
 
 ## P0：先明确运行契约
 
-### 1. 验证支持平台与 skill 发现模型
+### 1. 保持根 skill 与五个子 skill 的上游兼容结构
 
-README 当前声明支持 OpenClaw 和 Claude Code；在目标版本中各自验证以下安装方式：
+根 skill 与以下五个子 skill 都是仓库和上游同步边界，目录、文件名和独立触发能力保持不变：`xhs-auth`、`xhs-explore`、`xhs-interact`、`xhs-publish`、`xhs-content-ops`。
 
-- 仅安装仓库根目录；
-- 根目录与 `skills/*` 是否都会被发现；
-- 子 skill 是否能独立触发；
-- Agent 是否存在可执行的“加载/调用另一个 skill”机制，还是只能由当前上下文继续执行。
-
-输出一张平台兼容矩阵，并据此选择一种模型：
-
-- **单入口模型**：仅根 `SKILL.md` 可发现，根文档包含全部路由与流程；或
-- **多 skill 模型**：根和子 skill 均可发现，每个 skill 必须可独立完成自己的前置检查和安全规则。
-
-在此结论前，保持根 skill 的触发描述稳定，不使用“根 skill 路由到子 skill”的表述。
+各子 skill 保持独立、明确的触发描述；根 skill 保留全局边界、共享规则与复合运营路由。不同 Agent 平台可以发现根 skill、一个子 skill 或两者；任一情况下均以最贴近用户单一意图的子 skill 执行。复合请求由 `xhs-content-ops` 按阶段使用相应能力，不改变目录结构。
 
 ### 2. 确认 CLI 与 skill 的 bridge 配置契约
 
-当前 CLI 通过命令参数或进程环境读取 bridge 配置，且在本地 bridge 不可用时会尝试启动 bridge 和 Chrome。
+CLI 的 bridge 配置来源仅为完整的命令行参数或用户级配置文件。bridge server 与 Chrome 必须由用户预先启动并连接；CLI 未就绪时直接停止。
 
-配置采用用户级持久化存储：`~/.xiaohongshu-auto-skills/config.json`。CLI 负责读取与写入该文件；首次配置成功后，将 bridge URL、token 和 Session ID 保存为默认连接配置。
+配置采用用户级持久化存储：`~/.xiaohongshu-auto-skills/config.json`。使用 `config set` 提供三项 bridge 参数并验证 bridge server、浏览器扩展和 Session ID 后，CLI 才将它们保存为默认连接配置；`config status` 只报告配置状态和路径。
 
 实现配置存储时遵循以下契约：
 
-1. 配置来源只有两种，优先级为：命令行参数 > 用户配置文件。命令行参数只覆盖本次执行，不回写配置文件；不读取环境变量或 `.env`。
+1. 配置来源只有两种，优先级为：命令行参数 > 用户配置文件。完整命令行参数在 bridge server 和扩展验证成功后自动写回用户配置文件；验证失败时不保存。
 2. 首次配置或显式更新通过 CLI 的专用配置入口完成；配置校验成功后才写入，不将 token 或 Session ID 输出到终端、日志或最终回复。
 3. 配置目录权限为仅当前用户可访问（目录 `0700`、配置文件 `0600`）；写入采用原子替换，避免中断时产生损坏文件。
 4. 当前阶段只支持一个默认 bridge 连接；多 bridge / 多账号配置是后续独立需求，不通过覆盖默认配置隐式实现。
-5. 是否允许本地模式自动启动 bridge/Chrome 需要明确决定：若不允许，必须修改 CLI；若允许，删除 skill 中“禁止自动启动本地 bridge”的说法。
+5. 禁止 CLI 自动启动本地 bridge 或 Chrome；bridge 或浏览器扩展未就绪时直接停止并报告。
 
 在该配置契约落地前，禁止继续扩散不完整的命令示例。任何示例必须使用同一套已确认的配置传递方式，且不得回显 token 或 Session ID。
 
 ### 3. 确定认证命令的对外策略
 
-`scripts/cli.py` 有 `login`、`phone-login`、`send-code` 与 `verify-code`；现有根 skill 与 `xhs-auth` 的白名单不一致。
+对 Agent 的认证命令策略如下：
 
-决定并记录：
-
-- 对 Agent 暴露二维码阻塞登录 `login`，还是使用 `get-qrcode` + `wait-login`；
-- 是否暴露 `phone-login`。若保留分步手机号登录，则只暴露 `send-code` + `verify-code`，以便每次向用户确认手机号和验证码；
-- `check-login` 的未登录结果如何进入上述流程。
+- 二维码登录使用 `check-login` 获取二维码，再使用 `wait-login` 等待完成；二维码过期时使用 `get-qrcode` 刷新。
+- 手机登录只使用 `send-code` 与 `verify-code`，以便通过运行时用户交互工具逐次获取手机号和验证码。
+- 不向 Agent 暴露阻塞式 `login` 或会通过 CLI stdin 读取验证码的 `phone-login`。
+- `check-login` 返回未登录和二维码时，根 skill 展示二维码和可用的登录链接，然后等待用户扫码并运行 `wait-login`；二维码过期后改用 `get-qrcode`。
 
 ## P1：在 P0 契约确定后改写 skill 文档
 
@@ -68,12 +57,12 @@ README 当前声明支持 OpenClaw 和 Claude Code；在目标版本中各自验
 
 “纯文案生成、标题优化、离线竞品分析”不属于本项目 skill 的触发条件；这类请求不进入本项目 skill。
 
-若采用多 skill 模型，描述必须互斥：`xhs-content-ops` 只在请求明确包含两个或以上账号操作阶段时触发；单一搜索、互动或发布请求分别由对应子 skill 处理。
+根 skill 根据请求路由到认证、浏览、互动、发布或复合运营；`xhs-content-ops` 仅处理包含两个及以上账号操作阶段的请求。复合运营按阶段顺序使用所需能力，不并行执行多个账号操作。
 
 ### 5. 统一前置检查与用户输入说明
 
 - 维持现状：每次执行非认证类账号操作前，均先完成 bridge 配置检查并执行 `check-login`；不引入“同一已验证会话”缓存或跳过检查的规则。`check-login`、登录和退出登录按认证流程自身处理。
-- 子 skill 若可独立触发，必须包含足以安全停止的最小前置检查，不得只依赖“参见根 skill”。
+- 根 skill 保留共享规则；五个子 skill 保留独立触发条件、输入、命令、结果处理和足以安全停止的最小前置检查。
 - 用户交互工具按以下优先级选择：`AskUserQuestion`、`request_user_input`、`clarify`、`ask_user`。使用当前运行时实际提供的第一个工具；同一阶段可合并的问题应通过一次调用提出。四种工具均不可用时，输出编号问题并暂停，等待用户回复后再继续。
 - 仅在信息缺失、登录方式选择、手机号/验证码输入、发布/退出登录确认、批量操作确认时询问。竞品分析和热点追踪等只读连续步骤不逐步等待确认。
 
@@ -89,9 +78,7 @@ README 当前声明支持 OpenClaw 和 Claude Code；在目标版本中各自验
 
 ### 7. 收敛重复规则与临时文件约定
 
-按 P0 选定的单入口或多 skill 模型，保留一份共享规则来源；避免将完整 bridge、凭证、确认与失败处理说明复制到所有 skill。
-
-无论采用哪种模型，每个可独立触发的 skill 都必须保留以下最小规则：仅使用本项目 CLI、凭证不得回显、未登录/扩展未连接时停止、不可逆操作的确认要求。
+根 `references/bridge-configuration.md` 统一定义配置来源、前置检查和停止条件；根 `references/user-interaction.md` 统一定义用户交互工具、确认和回退。根 skill 与子 skill 在相关位置简要说明并链接这两份文件。子 skill 保留自身的触发条件、输入、流程和输出格式。
 
 临时标题和正文文件使用唯一任务目录；任务结束时删除，或在最终结果中明确保留位置。用户级配置文件不进入仓库；文档只描述权限保护与轮换原则，不输出其内容。
 
@@ -110,10 +97,10 @@ README 当前声明支持 OpenClaw 和 Claude Code；在目标版本中各自验
 
 ### 9. 根据已验证的平台处理 metadata
 
-`skill-creator` 的 `quick_validate.py` 不允许顶层 `version`，但这只能说明 Codex 校验器的要求，不能单独决定项目的发布格式。
+顶层 `version` 是本项目现有 skill 的发布元数据，保持不变。`skill-creator` 的 `quick_validate.py` 不支持该字段，因此不将它作为本项目的阻断性校验。
 
-- 若兼容矩阵包含 Codex：移除顶层 `version`，保留兼容的 `metadata`，并按需补充 `agents/openai.yaml`；
-- 若仅发布给 OpenClaw / Claude Code：先以各平台实际校验结果为准，再决定是否保留该字段；
+- 保留现有 `version` 与 OpenClaw metadata；
+- 若后续需要 Codex 专用分发，再单独设计适配产物，不修改上游兼容的 skill 文件；
 - 不再使用“所有 SKILL.md 平台完全兼容”的泛化表述。
 
 ### 10. 增加回归用例
@@ -132,16 +119,15 @@ README 当前声明支持 OpenClaw 和 Claude Code；在目标版本中各自验
 
 ## 推荐实施顺序
 
-1. 完成 P0-1 平台发现验证，选择单入口或多 skill 模型；
-2. 完成 P0-2 与 P0-3，确认 bridge 配置、自动启动和认证命令策略；
-3. 依选定模型改写触发范围、前置检查、用户输入和确认策略；
-4. 统一所有命令示例、临时文件与凭证规则；
-5. 增加“文档命令为 CLI 子集”的静态检查；
-6. 按兼容矩阵处理 metadata，并跑 prompt 回归矩阵。
+1. 完成 P0-2 与 P0-3，确认并实现 bridge 配置、自动启动和认证命令策略；
+2. 在不改变根 skill 与五个子 skill 目录结构的前提下，统一触发范围、前置检查、用户输入、确认策略、命令示例、临时文件与凭证规则；
+3. 收敛重复的共享规则，但保留子 skill 独立触发所需的最小说明；
+4. 增加“文档命令为 CLI 子集”的静态检查；
+5. 按目标平台的实际要求处理 metadata，并跑 prompt 回归矩阵。
 
 ## 非目标
 
 - 不新增泛文案、标题优化或离线内容分析能力；
 - 不用 skill 文档掩盖 CLI 的实际自动启动或配置加载行为；
 - 不因 parser 存在某命令就默认对 Agent 开放该命令；
-- 不在未验证平台发现模型前重构根/子 skill 路由。
+- 不改变根 skill 与五个子 skill 的目录、文件名或独立发现能力。

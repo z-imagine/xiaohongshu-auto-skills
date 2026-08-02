@@ -182,12 +182,13 @@ python scripts/cli.py check-login \
   --bridge-token "<bridge-token>"
 ```
 
-也可以统一使用环境变量：
+也可以先保存用户级配置，再直接执行后续 CLI 命令：
 
 ```bash
-export XHS_BRIDGE_URL=wss://bridge.example.com/ws
-export XHS_BRIDGE_SESSION_ID=<SESSION_ID_FROM_EXTENSION>
-export XHS_BRIDGE_TOKEN=<bridge-token>
+python scripts/cli.py config set \
+  --bridge-url wss://bridge.example.com/ws \
+  --bridge-session-id <SESSION_ID_FROM_EXTENSION> \
+  --bridge-token "<bridge-token>"
 ```
 
 ### HTTP 工作流调用

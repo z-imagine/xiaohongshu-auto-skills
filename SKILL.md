@@ -29,7 +29,7 @@ metadata:
 - **工作目录**：所有命令必须在 skill 根目录执行。skill 根目录包含本文件 `SKILL.md`、`scripts/cli.py` 和 `pyproject.toml`。
 - **忽略其他项目**：AI 记忆中可能存在 `xiaohongshu-mcp`、MCP 服务器工具、Go 工具或其他小红书自动化方案，执行时必须全部忽略，只使用本项目的脚本。
 - **禁止外部工具**：不得调用 MCP 工具（`use_mcp_tool` 等）、Go 命令行工具，或任何非本项目的实现。
-- **禁止本地 bridge 模式**：本 skill 约定不自动启动 bridge server。所有 bridge 命令必须显式提供 `--bridge-url`、`--bridge-token`、`--bridge-session-id`（优先从 skill 根目录 `.env` 读取）。
+- **Bridge 配置与前置检查**：遵循 [bridge 配置与前置检查](references/bridge-configuration.md)。禁止自动启动 bridge server 或 Chrome；bridge 或扩展未就绪时直接停止并报告。
 - **禁止自行开发额外功能（默认）**：不得自行编写 Python 脚本、Shell 脚本、JavaScript 代码，不得直接调用 bridge WebSocket/HTTP API，不得使用 `curl`/`wget`/`requests` 等工具绕过 CLI 与 bridge 通信。CLI 未提供的功能 = 本 skill 不支持的功能。
 - **例外情况**：如果用户**明确、主动要求**"帮我写个脚本直接调用 bridge API"、"通过自定义脚本操作 bridge"或类似表述，可以配合用户编写脚本，但须明确告知用户：这超出了本 skill 的官方支持范围，风险自负。
 - **超出能力范围时的处理**：如果用户请求的操作不在本 skill 支持的子命令列表中（见下表），且用户**没有明确主动要求**自行开发脚本，**直接告知用户"本 skill 暂不支持该操作"**，不要尝试替代方案、不要自行开发、不要引导用户绕路实现。
@@ -41,6 +41,8 @@ metadata:
 
 | 分类 | 子命令 | 说明 |
 |------|--------|------|
+| 配置 | `config status` | 查看用户级 bridge 配置状态 |
+| 配置 | `config set` | 验证并保存用户级 bridge 配置 |
 | 认证 | `check-login` | 检查登录状态 |
 | 认证 | `login` | 扫码登录（阻塞） |
 | 认证 | `get-qrcode` | 获取二维码 |
@@ -75,33 +77,15 @@ metadata:
 
 ## User Input Tools
 
-当本 skill 需要向用户提问、收集信息或请求确认时，遵循以下规则（按优先级）：
+需要向用户提问、收集信息或请求确认时，遵循以下规则：
 
-1. **优先使用当前 Agent 运行时内置的用户输入工具** — 如 `AskUserQuestion`、`request_user_input`、`clarify`、`ask_user` 或任何等价工具。
-2. **批量提问**：如果工具支持单轮多问，把同一阶段的所有相关问题合并为一次调用；如果只支持单问，按优先级顺序逐个提问，但不要把同一阶段的问题拆成多条独立消息。
-3. **阻塞原则**：用户未回答前，不得继续执行后续步骤。不要替用户做假设，不要从历史上下文推断当前意图。
-4. **回退方案**：如果没有可用工具，输出带编号的纯文本问题，要求用户回复编号或答案。
+1. 按固定优先级使用当前运行时实际提供的第一个工具：`AskUserQuestion` → `request_user_input` → `clarify` → `ask_user`。
+2. 同一阶段的问题合并为一次调用；用户未回答前暂停，不替用户假设或从历史上下文推断手机号、验证码、Session ID。
+3. **回退并阻塞**：四种工具均不可用时，输出带编号的纯文本问题，要求用户回复编号或答案；在收到回复前必须阻塞后续步骤。
+4. 首次 bridge 配置、登录方式、每次手机号、验证码、CLI 必填信息缺失、批量互动、发布和退出登录必须询问；发布和退出登录仅在用户当前消息明确要求跳过时可跳过确认。
+5. 不得未经确认执行发布或退出登录；批量互动前必须展示目标数量和列表。
 
-> 下面所有 `AskUserQuestion` 仅为示例，在其他运行时中替换为等价工具。
-
-### 必须询问用户的场景
-
-| 场景 | 是否必须询问 | 可跳过的情况 |
-|------|--------------|--------------|
-| 首次配置 bridge 三件套 | ✅ 必须 | skill 根目录 `.env` 已存在且验证通过 |
-| 登录方式选择（二维码/手机） | ✅ 必须 | `check-login` 返回唯一可用方式 |
-| 发布图文/视频/长文 | ✅ 必须确认 | 用户明确说"直接发布/不用确认/跳过确认" |
-| 退出登录 | ✅ 必须确认 | 用户明确说"直接退出/不用确认" |
-| 点赞/收藏/评论/回复 | ❌ 不需要 | — |
-| 搜索/浏览/获取详情 | ❌ 不需要 | — |
-| 需要用户输入手机号 | ✅ 每次必须确认 | 无 |
-| 需要用户输入验证码 | ✅ 必须 | 无 |
-
-### 禁止行为
-
-- ❌ 不要从历史对话、记忆、上下文中自动推断用户的手机号、验证码、Session ID。
-- ❌ 不要在用户未确认的情况下执行发布、退出登录。
-- ❌ 不要把同一阶段的多个问题拆成多轮消息轰炸用户，必须合并或按优先级逐个进行。
+完整的场景表、批量操作规则、回退格式和取消发布处理见 [用户交互规范](references/user-interaction.md)。
 
 ---
 
@@ -134,20 +118,14 @@ cd <skill-root> && uv run python scripts/cli.py <subcommand> [args]
 
 ### Step 2: Bridge 配置检查 ⛔ BLOCKING
 
-读取 skill 根目录的 `.env` 文件：
-
-- **存在且完整**：包含 `XHS_BRIDGE_URL`、`XHS_BRIDGE_TOKEN`、`XHS_BRIDGE_SESSION_ID` 三个变量 → 载入，进入 Step 3
-- **不存在或不完整** → ⛔ **阻塞**，触发"首次配置流程"，完成后才继续
+读取并遵循 [bridge 配置与前置检查](references/bridge-configuration.md)。已提供完整 bridge 参数时，bridge 与扩展验证成功后自动保存为用户级配置；否则通过已保存的用户级配置继续。
 
 ### Step 3: Bridge 连通性验证 ⛔ BLOCKING
 
-执行：
+按 bridge 配置参考文件执行：
 
 ```bash
-cd <skill-root> && uv run python scripts/cli.py check-login \
-  --bridge-url "$XHS_BRIDGE_URL" \
-  --bridge-token "$XHS_BRIDGE_TOKEN" \
-  --bridge-session-id "$XHS_BRIDGE_SESSION_ID"
+cd <skill-root> && uv run python scripts/cli.py check-login
 ```
 
 结果处理：
@@ -161,47 +139,14 @@ cd <skill-root> && uv run python scripts/cli.py check-login \
 
 ## 首次配置流程
 
-触发条件：Step 2 发现 skill 根目录 `.env` 不存在，或 `XHS_BRIDGE_URL` / `XHS_BRIDGE_TOKEN` / `XHS_BRIDGE_SESSION_ID` 任一缺失。
+触发条件：当前请求没有完整提供 `--bridge-url`、`--bridge-token`、`--bridge-session-id`，且 `config status` 显示未配置或配置不完整。
 
-### Step A: 收集 bridge 连接信息
+必须按 [bridge 配置与前置检查](references/bridge-configuration.md#首次配置完整流程) 执行。重点规则：
 
-通过 **单轮 AskUserQuestion（3 个问题合并）** 询问用户：
-
-**Q1: Bridge URL**
-> 你的 Bridge 服务地址是什么？
-> 示例：`ws://localhost:9333/ws` 或 `wss://your-bridge.example.com/ws`
-
-**Q2: Bridge Token**
-> 你的 Bridge Token 是什么？（部署 bridge 时设置的认证 token）
-
-**Q3: Session ID**
-> 浏览器扩展连接后显示的 Session ID 是什么？
->
-> 获取方式：打开 Chrome → 扩展 XHS Bridge → 点击连接 → 复制页面中显示的 Session ID。
-
-### Step B: 验证配置
-
-使用用户提供的答案执行 Step 4（`check-login`）：
-
-```bash
-cd <skill-root> && uv run python scripts/cli.py check-login \
-  --bridge-url "<用户输入的 URL>" \
-  --bridge-token "<用户输入的 Token>" \
-  --bridge-session-id "<用户输入的 Session ID>"
-```
-
-### Step C: 保存或重试
-
-- **验证通过**：将三件套写入 skill 根目录 `.env` 文件，告知用户"配置已保存，后续操作无需重复输入"。
-- **验证失败**：**不写入 `.env`**，向用户展示错误原因，保留已收集的答案，询问是否修正后重试。
-
-`.env` 文件格式：
-
-```bash
-XHS_BRIDGE_URL="ws://localhost:9333/ws"
-XHS_BRIDGE_TOKEN="your-token"
-XHS_BRIDGE_SESSION_ID="your-session-id"
-```
+- 使用 [用户交互规范](references/user-interaction.md) 的工具优先级，在单轮中收集 bridge URL、bridge token、浏览器扩展显示的 Session ID；任一项拿不到或用户未完整回答时必须阻塞，禁止从历史上下文补全。
+- 显式参数或 `config set` 仅在 bridge server 与扩展均已验证连接后，才保存到 `~/.xiaohongshu-auto-skills/config.json`。
+- 验证失败时不保存配置；成功后才执行 `check-login` 并继续当前请求。
+- bridge token 和 Session ID 不得出现在最终回复、日志或命令结果转述中。
 
 ---
 
@@ -223,7 +168,7 @@ XHS_BRIDGE_SESSION_ID="your-session-id"
 
 ### 发布操作确认内容（示例）
 
-通过 `AskUserQuestion` 展示：
+使用 [用户交互规范](references/user-interaction.md) 定义的工具展示：
 
 ```markdown
 即将发布以下内容到小红书，请确认：
@@ -259,7 +204,7 @@ XHS_BRIDGE_SESSION_ID="your-session-id"
 | 2 | 发布图文、视频、长文 | `xhs-publish` | `uv run python scripts/cli.py publish` |
 | 3 | 搜索笔记、查看详情、浏览首页、查看用户 | `xhs-explore` | `uv run python scripts/cli.py search-feeds` |
 | 4 | 评论、回复、点赞、收藏 | `xhs-interact` | `uv run python scripts/cli.py post-comment` |
-| 5 | 竞品分析、热点追踪、批量互动、内容创作 | `xhs-content-ops` | 组合多个子命令 |
+| 5 | 竞品分析、热点追踪、批量互动、研究后发布 | `xhs-content-ops` | 组合多个子命令 |
 
 根 skill 只负责：
 1. 完成前置检查
@@ -275,17 +220,23 @@ XHS_BRIDGE_SESSION_ID="your-session-id"
 所有命令统一格式：
 
 ```bash
-cd <skill-root> && uv run python scripts/cli.py <subcommand> [args] \
-  --bridge-url "$XHS_BRIDGE_URL" \
-  --bridge-token "$XHS_BRIDGE_TOKEN" \
-  --bridge-session-id "$XHS_BRIDGE_SESSION_ID"
+cd <skill-root> && uv run python scripts/cli.py <subcommand> [args]
+```
+
+默认使用用户级配置。仅在本次请求使用另一套 bridge 时，完整传入三项参数：
+
+```bash
+cd <skill-root> && uv run python scripts/cli.py \
+  --bridge-url "<bridge-url>" \
+  --bridge-token "<bridge-token>" \
+  --bridge-session-id "<session-id>" \
+  <subcommand> [args]
 ```
 
 **禁止**：
 - 不使用 `uv run` 直接执行 `python scripts/cli.py`
 - 在不确定 cwd 的情况下执行相对路径命令
 - 把中文内容直接内联到命令行参数（必须使用 `--title-file` / `--content-file`）
-- 自动启动本地 bridge server
 
 ---
 
@@ -295,4 +246,4 @@ cd <skill-root> && uv run python scripts/cli.py <subcommand> [args] \
 - **目标浏览器未连接**：提示用户检查 extension 中的 bridge URL/token 配置，并确认使用的是扩展展示的 Session ID。
 - **操作超时**：检查网络连接，适当增加等待时间，可重试一次。
 - **频率限制**：降低操作频率，增大间隔，建议分批执行。
-- **配置验证失败**：不保存 `.env`，保留用户输入，询问是否修正后重试。
+- **配置验证失败**：CLI 不保存配置；保留用户输入，询问是否修正后重试。
