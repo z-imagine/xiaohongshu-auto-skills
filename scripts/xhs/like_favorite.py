@@ -42,6 +42,10 @@ def _get_interact_state(page: Page, feed_id: str) -> tuple[bool, bool]:
 
     note_detail_map = json.loads(result)
     detail = note_detail_map.get(feed_id)
+    # 页面重定向或详情接口刷新时，noteDetailMap 的 key 可能不是请求中的
+    # feed_id。只有唯一一条记录时才安全地退化到该详情，避免取错笔记状态。
+    if not detail and len(note_detail_map) == 1:
+        detail = next(iter(note_detail_map.values()))
     if not detail:
         raise NoFeedDetailError()
 
@@ -124,6 +128,36 @@ def unfavorite_feed(page: Page, feed_id: str, xsec_token: str) -> ActionResult:
     return _toggle_favorite(page, feed_id, target_collected=False)
 
 
+def _wait_collect_button(page: Page, timeout: float = 5.0, interval: float = 0.2) -> bool:
+    """等待收藏按钮可被定位。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if page.has_element(COLLECT_BUTTON):
+            return True
+        time.sleep(interval)
+    return False
+
+
+def _wait_collected_state(
+    page: Page,
+    feed_id: str,
+    target_collected: bool,
+    timeout: float = 3.0,
+    interval: float = 0.3,
+) -> bool:
+    """短轮询确认收藏状态是否已达到目标。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            _, collected = _get_interact_state(page, feed_id)
+            if collected == target_collected:
+                return True
+        except NoFeedDetailError:
+            pass
+        time.sleep(interval)
+    return False
+
+
 def _toggle_favorite(page: Page, feed_id: str, target_collected: bool) -> ActionResult:
     """执行收藏/取消收藏操作。"""
     action_name = "收藏" if target_collected else "取消收藏"
@@ -139,22 +173,26 @@ def _toggle_favorite(page: Page, feed_id: str, target_collected: bool) -> Action
         logger.info("feed %s 已%s，跳过", feed_id, action_name)
         return ActionResult(feed_id=feed_id, success=True, message=f"已{action_name}")
 
-    # 点击
-    page.click_element(COLLECT_BUTTON)
-    time.sleep(3)
+    if not _wait_collect_button(page):
+        logger.error("feed %s 未找到收藏按钮: %s", feed_id, COLLECT_BUTTON)
+        return ActionResult(
+            feed_id=feed_id,
+            success=False,
+            message=f"{action_name}失败：未找到收藏按钮",
+        )
 
-    # 验证
-    try:
-        _, collected = _get_interact_state(page, feed_id)
-        if collected == target_collected:
+    for attempt in range(2):
+        if attempt:
+            logger.warning("feed %s %s首次未确认成功，重试", feed_id, action_name)
+        try:
+            page.click_element(COLLECT_BUTTON)
+        except Exception as error:
+            logger.warning("feed %s 点击收藏按钮失败（第%d次）: %s", feed_id, attempt + 1, error)
+            continue
+
+        if _wait_collected_state(page, feed_id, target_collected):
             logger.info("feed %s %s成功", feed_id, action_name)
             return ActionResult(feed_id=feed_id, success=True, message=f"{action_name}成功")
-    except NoFeedDetailError:
-        pass
 
-    # 重试
-    logger.warning("feed %s %s可能未成功，重试", feed_id, action_name)
-    page.click_element(COLLECT_BUTTON)
-    time.sleep(2)
-
-    return ActionResult(feed_id=feed_id, success=True, message=f"{action_name}已执行")
+    logger.error("feed %s %s未确认成功", feed_id, action_name)
+    return ActionResult(feed_id=feed_id, success=False, message=f"{action_name}失败：状态未变化")
