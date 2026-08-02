@@ -23,7 +23,7 @@ bash scripts/test_cli_integration.sh
 1. 确认 CLI 注册了 NetLogger 命令；
 2. 通过 `check-login` 验证远端 Bridge 与目标浏览器 session；
 3. 启用并清空 NetLogger；
-4. 再次执行只读的 `check-login`，读取最近记录并生成风险报告；
+4. 已登录时执行一次只读的首页 Feed 查询，读取最近记录并生成风险报告；
 5. 清空并关闭 NetLogger。
 
 脚本不会执行点赞、收藏、评论、填写表单或发布。即使中间步骤失败，退出 trap 也会尝试关闭和清空 NetLogger。
