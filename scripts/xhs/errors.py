@@ -54,6 +54,15 @@ class PublishError(XHSError):
     """发布失败。"""
 
 
+class AccountRiskControlError(PublishError):
+    """账号因平台风控而无法发布。"""
+
+    def __init__(self, code: int, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(f"账号被风控（code={code}）：{message}")
+
+
 class TitleTooLongError(PublishError):
     """标题超过长度限制。"""
 

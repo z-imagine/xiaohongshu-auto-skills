@@ -9,7 +9,13 @@ import re
 import time
 
 from .cdp import Page
-from .errors import ContentTooLongError, PublishError, TitleTooLongError, UploadTimeoutError
+from .errors import (
+    AccountRiskControlError,
+    ContentTooLongError,
+    PublishError,
+    TitleTooLongError,
+    UploadTimeoutError,
+)
 from .selectors import (
     CONTENT_EDITOR,
     CONTENT_LENGTH_ERROR,
@@ -20,13 +26,11 @@ from .selectors import (
     ORIGINAL_SWITCH,
     ORIGINAL_SWITCH_CARD,
     POPOVER,
-    PUBLISH_BUTTON,
     SCHEDULE_SWITCH,
     TAG_FIRST_ITEM,
     TAG_TOPIC_CONTAINER,
     TITLE_INPUT,
     TITLE_MAX_SUFFIX,
-    UPLOAD_CONTENT,
     UPLOAD_INPUT,
     VISIBILITY_DROPDOWN,
     VISIBILITY_OPTIONS,
@@ -114,35 +118,189 @@ def fill_publish_form(page: Page, content: PublishImageContent) -> None:
 
 
 def click_publish_button(page: Page) -> None:
-    """点击发布按钮。
+    """触发发布并确认业务结果。
 
-    用文本内容精确匹配，避免点到旁边的"发布笔记"下拉按钮。
-
-    Raises:
-        PublishError: 点击失败。
+    优先通过发布 Web Component 的 ``publish`` 事件触发，旧页面则回退到可见的
+    文本按钮。发布过程会捕获 XHR、fetch、控制台和 toast 的反馈；无法确认结果时
+    返回失败，避免把一次未确认的操作误报为发布成功。
     """
-    clicked = page.evaluate(
+    _install_publish_result_capture(page)
+    try:
+        fire_result = page.evaluate(
+            """
+            (() => {
+                const host = document.querySelector('xhs-publish-btn[is-publish="true"]');
+                if (host) {
+                    if (host.getAttribute('submit-disabled') === 'true') return 'disabled';
+                    host.dispatchEvent(new CustomEvent('publish', {
+                        bubbles: true, cancelable: true,
+                    }));
+                    return 'fired';
+                }
+
+                for (const btn of document.querySelectorAll('button.bg-red')) {
+                    const span = btn.querySelector('span');
+                    const text = (span ? span.textContent : btn.textContent).trim();
+                    if (text === '发布' && !btn.disabled) {
+                        btn.scrollIntoView({block: 'center'});
+                        btn.click();
+                        return 'legacy_fired';
+                    }
+                }
+                return 'not_found';
+            })()
+            """
+        )
+        if fire_result == "not_found":
+            raise PublishError("未找到发布按钮")
+        if fire_result == "disabled":
+            raise PublishError("发布按钮不可用，请先完成必填项")
+
+        result = _wait_for_publish_result(page)
+        _raise_for_publish_result(result)
+        logger.info("发布成功（触发方式=%s）", fire_result)
+    finally:
+        _clear_publish_result_capture(page)
+
+
+def _install_publish_result_capture(page: Page) -> None:
+    """安装一次性发布反馈采集器，并保存可恢复的浏览器原始方法。"""
+    page.evaluate(
         """
         (() => {
-            // 找文本内容精确为"发布"的 bg-red 按钮（排除"发布笔记"等）
-            const btns = document.querySelectorAll('button.bg-red');
-            for (const btn of btns) {
-                const span = btn.querySelector('span');
-                const text = (span ? span.textContent : btn.textContent).trim();
-                if (text === '发布') {
-                    btn.scrollIntoView({block: 'center'});
-                    btn.click();
-                    return true;
+            window.__xhsClearPublishCapture?.();
+            window.__xhsPublishResult = null;
+            const originals = {
+                open: XMLHttpRequest.prototype.open,
+                send: XMLHttpRequest.prototype.send,
+                fetch: window.fetch,
+                console: {},
+                observer: null,
+            };
+
+            const capture = (source, payload) => {
+                if (!window.__xhsPublishResult) {
+                    window.__xhsPublishResult = {source, ...payload};
                 }
+            };
+            const captureBody = (source, url, status, body) => {
+                if (!body || window.__xhsPublishResult) return;
+                const isRelevant = body.includes('HTTPBizError')
+                    || /"code":\\s*-913\\d/.test(body)
+                    || body.includes('禁止发笔记')
+                    || /"note_id":\\s*"[^"]+"/.test(body);
+                if (!isRelevant) return;
+                try {
+                    capture(source, {url, status, ...JSON.parse(body)});
+                } catch (_) {
+                    const code = body.match(/"code":\\s*(-?\\d+)/);
+                    const msg = body.match(/"msg":\\s*"([^"]+)"/);
+                    capture(source, {
+                        url, status,
+                        code: code ? Number(code[1]) : null,
+                        msg: msg ? msg[1] : null,
+                    });
+                }
+            };
+
+            XMLHttpRequest.prototype.open = function(method, url) {
+                this.__xhsPublishUrl = url;
+                return originals.open.apply(this, arguments);
+            };
+            XMLHttpRequest.prototype.send = function() {
+                this.addEventListener('loadend', () => {
+                    captureBody('xhr', this.__xhsPublishUrl, this.status, this.responseText || '');
+                }, {once: true});
+                return originals.send.apply(this, arguments);
+            };
+            window.fetch = async function(...args) {
+                const response = await originals.fetch.apply(this, args);
+                try {
+                    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+                    captureBody('fetch', url, response.status, await response.clone().text());
+                } catch (_) {}
+                return response;
+            };
+
+            for (const method of ['error', 'warn', 'log']) {
+                originals.console[method] = console[method];
+                console[method] = function(...args) {
+                    const text = args.map((arg) => {
+                        try { return typeof arg === 'string' ? arg : JSON.stringify(arg); }
+                        catch (_) { return String(arg); }
+                    }).join(' ');
+                    if (text.includes('HTTPBizError') || text.includes('发布失败')) {
+                        const code = text.match(/"code":\\s*(-?\\d+)/);
+                        const msg = text.match(/"msg":\\s*"([^"]+)"/);
+                        capture('console', {
+                            code: code ? Number(code[1]) : null,
+                            msg: msg ? msg[1] : text.slice(0, 300),
+                        });
+                    }
+                    return originals.console[method].apply(this, args);
+                };
             }
-            return false;
+
+            const riskWords = /违反|违规|禁止发笔记|审核未通过|账号异常|无法发布/;
+            originals.observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                        const text = (node.textContent || '').trim();
+                        if (text && text.length <= 300 && riskWords.test(text)) {
+                            capture('toast', {code: -9136, msg: text});
+                        }
+                    }
+                }
+            });
+            originals.observer.observe(document.body, {childList: true, subtree: true});
+
+            window.__xhsClearPublishCapture = () => {
+                XMLHttpRequest.prototype.open = originals.open;
+                XMLHttpRequest.prototype.send = originals.send;
+                window.fetch = originals.fetch;
+                for (const [method, original] of Object.entries(originals.console)) {
+                    console[method] = original;
+                }
+                originals.observer?.disconnect();
+                delete window.__xhsClearPublishCapture;
+            };
         })()
         """
     )
-    if not clicked:
-        raise PublishError("未找到发布按钮")
-    time.sleep(3)
-    logger.info("发布完成")
+
+
+def _clear_publish_result_capture(page: Page) -> None:
+    """恢复发布采集器修改过的全局对象。"""
+    page.evaluate("window.__xhsClearPublishCapture?.()")
+
+
+def _wait_for_publish_result(page: Page, timeout: float = 15.0) -> dict:
+    """等待已安装采集器返回发布业务结果。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = page.evaluate("window.__xhsPublishResult")
+        if isinstance(result, dict):
+            return result
+        time.sleep(0.3)
+    raise PublishError("发布后未收到可确认的业务结果")
+
+
+def _raise_for_publish_result(result: dict) -> None:
+    """把发布反馈转换为成功、业务失败或明确的风控异常。"""
+    code = result.get("code")
+    message = str(result.get("msg") or result.get("message") or "")
+    if code == 0 or result.get("success") is True:
+        return
+
+    is_risk_control = (
+        (isinstance(code, int) and -9140 <= code <= -9130)
+        or any(word in message for word in ("违反", "违规", "禁止发笔记", "账号异常"))
+    )
+    if is_risk_control:
+        risk_code = code if isinstance(code, int) else -9136
+        raise AccountRiskControlError(risk_code, message or "账号被风控")
+    raise PublishError(f"发布失败：code={code} msg={message!r}")
 
 
 def save_as_draft(page: Page) -> None:
@@ -185,58 +343,42 @@ def _click_publish_tab(page: Page, tab_name: str) -> None:
     """点击发布页 TAB（上传图文/上传视频）。"""
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
-        # 查找匹配的 TAB（支持多种结构）
         found = page.evaluate(
             f"""
             (() => {{
-                // 策略1: 查找 div.creator-tab（过滤隐藏元素）
-                let tabs = document.querySelectorAll({json.dumps(CREATOR_TAB)});
-                for (const tab of tabs) {{
+                const name = {json.dumps(tab_name)};
+                const tabs = document.querySelectorAll({json.dumps(CREATOR_TAB)});
+                const usable = (tab, requireBound) => {{
+                    if (tab.hasAttribute('data-hp-kind')
+                        || tab.hasAttribute('button-hp-installed')) return false;
+                    if (requireBound && !tab.hasAttribute('data-hp-bound')) return false;
                     const titleSpan = tab.querySelector('span.title');
-                    const tabText = titleSpan ? titleSpan.textContent.trim() : tab.textContent.trim();
-                    if (tabText === {json.dumps(tab_name)}) {{
-                        const rect = tab.getBoundingClientRect();
-                        const style = window.getComputedStyle(tab);
-                        // 跳过隐藏或被移出视口的元素
-                        if (rect.width === 0 || rect.height === 0) continue;
-                        if (rect.left < 0 || rect.top < 0) continue;
-                        if (style.display === 'none' || style.visibility === 'hidden') continue;
-                        const x = rect.left + rect.width / 2;
-                        const y = rect.top + rect.height / 2;
-                        const target = document.elementFromPoint(x, y);
-                        if (target === tab || tab.contains(target)) {{
-                            tab.click();
-                            return 'clicked';
-                        }}
-                        return 'blocked';
-                    }}
-                }}
-                
-                // 策略2: 查找任意包含目标文本的元素
-                const allElements = document.querySelectorAll('*');
-                for (const el of allElements) {{
-                    if (el.children.length === 0 && el.textContent.trim() === {json.dumps(tab_name)}) {{
-                        const rect = el.getBoundingClientRect();
-                        const style = window.getComputedStyle(el);
-                        if (rect.width === 0 || rect.height === 0) continue;
-                        if (rect.left < 0 || rect.top < 0) continue;
-                        if (style.display === 'none' || style.visibility === 'hidden') continue;
-                        el.click();
+                    const tabText = titleSpan
+                        ? titleSpan.textContent.trim() : tab.textContent.trim();
+                    if (tabText !== name) return false;
+                    const rect = tab.getBoundingClientRect();
+                    const style = window.getComputedStyle(tab);
+                    return rect.width > 0 && rect.height > 0
+                        && rect.left >= -1000 && rect.top >= -1000
+                        && style.display !== 'none' && style.visibility !== 'hidden';
+                }};
+                // 优先使用已绑定真实事件的节点；没有该标记时才使用兼容兜底。
+                for (const requireBound of [true, false]) {{
+                    for (const tab of tabs) {{
+                        if (!usable(tab, requireBound)) continue;
+                        tab.click();
                         return 'clicked';
                     }}
                 }}
-                
                 return 'not_found';
             }})()
             """
         )
 
-        if found == "clicked":
+        if found == "clicked" and _wait_for_active_publish_tab(page, tab_name):
             return
-
-        if found == "blocked":
-            # 尝试移除弹窗
-            _remove_pop_cover(page)
+        if found == "clicked":
+            logger.warning("点击 %s 后未确认 active 状态，继续寻找可用 Tab", tab_name)
 
         time.sleep(0.2)
 
@@ -254,6 +396,32 @@ def _click_publish_tab(page: Page, tab_name: str) -> None:
     """)
     logger.error("调试信息: %s", debug_info)
     raise PublishError(f"没有找到发布 TAB - {tab_name}")
+
+
+def _wait_for_active_publish_tab(page: Page, tab_name: str, timeout: float = 5.0) -> bool:
+    """确认点击的非 Honey Pot Tab 确实完成 active 状态切换。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        active_title = page.evaluate(
+            f"""
+            (() => {{
+                for (const tab of document.querySelectorAll({json.dumps(CREATOR_TAB)})) {{
+                    if (tab.hasAttribute('data-hp-kind')
+                        || tab.hasAttribute('button-hp-installed')) continue;
+                    if (!tab.classList.contains('active')) continue;
+                    const rect = tab.getBoundingClientRect();
+                    if (rect.left < -1000 || rect.top < -1000) continue;
+                    const title = tab.querySelector('span.title');
+                    return title ? title.textContent.trim() : null;
+                }}
+                return null;
+            }})()
+            """
+        )
+        if active_title == tab_name:
+            return True
+        time.sleep(0.2)
+    return False
 
 
 def _remove_pop_cover(page: Page) -> None:
@@ -282,7 +450,11 @@ def _upload_image_assets(page: Page, image_assets: list) -> None:
 
     优先走 URL 上传协议；本地兼容模式下仍可回退到原始路径上传。
     """
-    valid_assets = [asset for asset in image_assets if getattr(asset, "source_path", "") or getattr(asset, "source_url", "")]
+    valid_assets = [
+        asset
+        for asset in image_assets
+        if getattr(asset, "source_path", "") or getattr(asset, "source_url", "")
+    ]
     if not valid_assets:
         raise PublishError("没有有效的图片资源")
 
