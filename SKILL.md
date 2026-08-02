@@ -44,10 +44,8 @@ metadata:
 | 配置 | `config status` | 查看用户级 bridge 配置状态 |
 | 配置 | `config set` | 验证并保存用户级 bridge 配置 |
 | 认证 | `check-login` | 检查登录状态 |
-| 认证 | `login` | 扫码登录（阻塞） |
 | 认证 | `get-qrcode` | 获取二维码 |
 | 认证 | `wait-login` | 等待扫码完成 |
-| 认证 | `phone-login` | 手机号登录（交互式） |
 | 认证 | `send-code` | 发送手机验证码 |
 | 认证 | `verify-code` | 提交验证码 |
 | 认证 | `delete-cookies` | 退出登录 |
@@ -146,7 +144,6 @@ cd <skill-root> && uv run python scripts/cli.py check-login
 - 使用 [用户交互规范](references/user-interaction.md) 的工具优先级，在单轮中收集 bridge URL、bridge token、浏览器扩展显示的 Session ID；任一项拿不到或用户未完整回答时必须阻塞，禁止从历史上下文补全。
 - 显式参数或 `config set` 仅在 bridge server 与扩展均已验证连接后，才保存到 `~/.xiaohongshu-auto-skills/config.json`。
 - 验证失败时不保存配置；成功后才执行 `check-login` 并继续当前请求。
-- bridge token 和 Session ID 不得出现在最终回复、日志或命令结果转述中。
 
 ---
 
@@ -223,7 +220,7 @@ cd <skill-root> && uv run python scripts/cli.py check-login
 cd <skill-root> && uv run python scripts/cli.py <subcommand> [args]
 ```
 
-默认使用用户级配置。仅在本次请求使用另一套 bridge 时，完整传入三项参数：
+默认使用用户级配置。需要指定另一套 bridge 时，完整传入三项参数；验证成功后会保存并成为新的用户级默认配置：
 
 ```bash
 cd <skill-root> && uv run python scripts/cli.py \

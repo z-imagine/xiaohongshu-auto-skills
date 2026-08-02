@@ -36,7 +36,7 @@ uv run python scripts/cli.py config set \
   --bridge-session-id "<session-id>"
 ```
 
-`config set` 只有在 bridge server 和目标浏览器扩展已连接时才会保存配置。配置目录权限为 `0700`，配置文件权限为 `0600`；不得输出 token、Session ID 或配置文件内容。
+`config set` 只有在 bridge server 和目标浏览器扩展已连接时才会保存配置。配置目录权限为 `0700`，配置文件权限为 `0600`。
 
 - **验证成功**：告知用户配置已保存，运行 `check-login`，然后继续原请求。
 - **验证失败**：不保存配置；仅报告可安全披露的错误，保留本轮已收集的信息，询问用户是否修正后重试。
