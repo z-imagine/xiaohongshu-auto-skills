@@ -9,7 +9,8 @@
     "scripting",
     "alarms",
     "debugger",
-    "storage"
+    "storage",
+    "webRequest"
   ],
   "host_permissions": [
     "https://www.xiaohongshu.com/*",

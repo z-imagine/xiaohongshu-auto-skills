@@ -45,7 +45,7 @@ class BridgePage:
             raise CDPError(f"无法连接到 bridge server（{self._bridge_url}）: {e}") from e
 
         resp = json.loads(raw)
-        if "error" in resp and resp["error"]:
+        if resp.get("error"):
             error_code = resp.get("error_code")
             if error_code:
                 raise CDPError(f"Bridge 错误[{error_code}]: {resp['error']}")
@@ -233,6 +233,21 @@ class BridgePage:
     def get_session_state(self) -> dict[str, Any]:
         """Fetch detailed bridge session state for diagnostics."""
         return self._call("get_session_state")
+
+    # ─── NetLog 风控数据 ─────────────────────────────────────────
+
+    def get_netlog_state(self) -> dict[str, Any]:
+        return self._call("get_netlog_state") or {}
+
+    def set_netlog_enabled(self, enabled: bool) -> dict[str, Any]:
+        return self._call("set_netlog_enabled", {"enabled": enabled}) or {}
+
+    def get_netlog(self) -> list[dict[str, Any]]:
+        result = self._call("get_netlog") or {}
+        return result.get("entries") or []
+
+    def clear_netlog(self) -> dict[str, Any]:
+        return self._call("clear_netlog") or {}
 
     @property
     def target_id(self) -> str:

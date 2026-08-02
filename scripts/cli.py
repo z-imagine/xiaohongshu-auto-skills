@@ -792,6 +792,54 @@ def cmd_publish_video(args: argparse.Namespace) -> None:
         browser.close()
 
 
+def cmd_set_netlog_enabled(args: argparse.Namespace) -> None:
+    """显式启用或关闭脱敏网络日志。"""
+    browser, page = _connect_existing(args)
+    try:
+        state = page.set_netlog_enabled(args.enabled)
+        _output({"success": True, "netlog": state})
+    finally:
+        browser.close()
+
+
+def cmd_get_netlog(args: argparse.Namespace) -> None:
+    """读取最近的脱敏网络日志。"""
+    browser, page = _connect_existing(args)
+    try:
+        state = page.get_netlog_state()
+        if not state.get("enabled"):
+            _output({"success": False, "error": "NetLogger 未启用"}, exit_code=2)
+        entries = page.get_netlog()
+        if args.limit is not None:
+            entries = entries[-args.limit :]
+        _output({"success": True, "total": len(entries), "entries": entries})
+    finally:
+        browser.close()
+
+
+def cmd_risk_report(args: argparse.Namespace) -> None:
+    """对当前会话的 NetLog 生成离线风险报告。"""
+    from xhs.risk_analyzer import analyze
+
+    browser, page = _connect_existing(args)
+    try:
+        state = page.get_netlog_state()
+        if not state.get("enabled"):
+            _output({"success": False, "error": "NetLogger 未启用"}, exit_code=2)
+        _output({"success": True, "report": analyze(page.get_netlog())})
+    finally:
+        browser.close()
+
+
+def cmd_clear_netlog(args: argparse.Namespace) -> None:
+    """清空当前会话的脱敏网络日志。"""
+    browser, page = _connect_existing(args)
+    try:
+        _output({"success": True, "netlog": page.clear_netlog()})
+    finally:
+        browser.close()
+
+
 # ─── 参数解析 ──────────────────────────────────────────────────────────────────
 
 
@@ -994,6 +1042,22 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser("next-step", help="点击下一步 + 填写描述")
     sub.add_argument("--content-file", required=True)
     sub.set_defaults(func=cmd_next_step)
+
+    sub = subparsers.add_parser("enable-netlog", help="启用脱敏网络日志（默认关闭）")
+    sub.set_defaults(func=cmd_set_netlog_enabled, enabled=True)
+
+    sub = subparsers.add_parser("disable-netlog", help="关闭脱敏网络日志")
+    sub.set_defaults(func=cmd_set_netlog_enabled, enabled=False)
+
+    sub = subparsers.add_parser("get-netlog", help="读取脱敏网络日志")
+    sub.add_argument("--limit", type=int, default=None, help="只读取最近 N 条")
+    sub.set_defaults(func=cmd_get_netlog)
+
+    sub = subparsers.add_parser("risk-report", help="根据 NetLog 生成风险摘要")
+    sub.set_defaults(func=cmd_risk_report)
+
+    sub = subparsers.add_parser("clear-netlog", help="清空 NetLog 缓存")
+    sub.set_defaults(func=cmd_clear_netlog)
 
     return parser
 

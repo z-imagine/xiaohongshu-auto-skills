@@ -9,6 +9,8 @@
  * - get_cookies: chrome.cookies.getAll
  */
 
+importScripts("netlogger.js");
+
 const DEFAULT_SETTINGS = {
   bridgeUrl: "",
   sessionId: "",
@@ -275,6 +277,15 @@ async function handleCommand(msg) {
   const { method, params = {} } = msg;
 
   switch (method) {
+    case "get_netlog_state":
+      return await NetLogger.getState();
+    case "set_netlog_enabled":
+      return await NetLogger.setEnabled(params.enabled);
+    case "get_netlog":
+      return { entries: await NetLogger.getEntries() };
+    case "clear_netlog":
+      return await NetLogger.clear();
+
     // ── 导航 ──
     case "navigate":
       return await cmdNavigate(params);
