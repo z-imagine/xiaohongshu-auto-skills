@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,11 @@ from .risk_analyzer import analyze
 
 logger = logging.getLogger(__name__)
 _BLOCKING_LEVELS = {"medium", "high"}
+
+
+def _is_risk_gate_enabled() -> bool:
+    """风险门禁默认关闭，避免未校准规则阻断正常自动化。"""
+    return os.getenv("XHS_RISK_GATE_ENABLED", "").lower() in {"1", "true", "yes"}
 
 
 @dataclass
@@ -23,6 +29,8 @@ class NetlogRiskGate:
 
     @classmethod
     def start(cls, page: Any) -> NetlogRiskGate:
+        if not _is_risk_gate_enabled():
+            return cls(page=page, baseline_count=0, enabled=False)
         if not hasattr(page, "get_netlog_state") or not hasattr(page, "get_netlog"):
             return cls(page=page, baseline_count=0, enabled=False)
         try:

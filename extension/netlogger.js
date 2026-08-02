@@ -79,7 +79,10 @@
   chrome.webRequest.onBeforeRedirect.addListener(
     (details) => {
       if (!enabled || !isXhsUrl(details.url)) return;
-      void append(sanitize(details, { status: details.statusCode, category: "risk_redirect" }));
+      // 首页根路径的常规跳转不代表风控，保留记录供诊断但不参与风险判断。
+      const path = new URL(details.url).pathname;
+      const category = path === "/" ? "ignored_redirect" : "risk_redirect";
+      void append(sanitize(details, { status: details.statusCode, category }));
     },
     { urls: ["*://*.xiaohongshu.com/*"] },
   );

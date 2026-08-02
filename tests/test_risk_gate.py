@@ -17,21 +17,36 @@ class FakePage:
         return list(self.entries)
 
 
-def test_gate_is_inactive_when_netlogger_is_disabled() -> None:
+def test_gate_is_inactive_when_netlogger_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XHS_RISK_GATE_ENABLED", "true")
     gate = NetlogRiskGate.start(FakePage(False, []))
 
     assert gate.enabled is False
     gate.check_after()
 
 
-def test_gate_blocks_before_operation_for_existing_high_risk_signal() -> None:
+def test_gate_is_disabled_by_default() -> None:
+    gate = NetlogRiskGate.start(
+        FakePage(True, [{"status": 999, "category": "business_api", "path": "/api/note"}]),
+    )
+
+    assert gate.enabled is False
+
+
+def test_gate_blocks_before_operation_for_existing_high_risk_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XHS_RISK_GATE_ENABLED", "true")
     page = FakePage(True, [{"status": 999, "category": "business_api", "path": "/api/note"}])
 
     with pytest.raises(RiskSignalDetectedError, match="已停止自动化"):
         NetlogRiskGate.start(page)
 
 
-def test_gate_blocks_only_on_new_high_risk_signal_after_operation() -> None:
+def test_gate_blocks_only_on_new_high_risk_signal_after_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XHS_RISK_GATE_ENABLED", "true")
     page = FakePage(True, [{"status": 200, "category": "business_api", "path": "/api/feed"}])
     gate = NetlogRiskGate.start(page)
     page.entries.append({"status": 403, "category": "business_api", "path": "/api/note/create"})
@@ -40,7 +55,8 @@ def test_gate_blocks_only_on_new_high_risk_signal_after_operation() -> None:
         gate.check_after()
 
 
-def test_gate_allows_low_risk_network_failure() -> None:
+def test_gate_allows_low_risk_network_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XHS_RISK_GATE_ENABLED", "true")
     page = FakePage(True, [])
     gate = NetlogRiskGate.start(page)
     page.entries.append({"status": 0, "category": "other", "path": "/api/feed"})
