@@ -63,6 +63,16 @@ class AccountRiskControlError(PublishError):
         super().__init__(f"账号被风控（code={code}）：{message}")
 
 
+class RiskSignalDetectedError(XHSError):
+    """NetLogger 发现风险信号，自动化已停止。"""
+
+    def __init__(self, report: dict) -> None:
+        self.report = report
+        signals = "；".join(report.get("high_risk_signals", [])[:3]) or report.get("summary", "")
+        level = report.get("risk_level", "unknown")
+        super().__init__(f"检测到 {level} 风险信号，已停止自动化：{signals}")
+
+
 class TitleTooLongError(PublishError):
     """标题超过长度限制。"""
 

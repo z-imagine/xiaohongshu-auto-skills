@@ -505,7 +505,11 @@ def cmd_post_comment(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         post_comment(page, args.feed_id, args.xsec_token, args.content)
+        gate.check_after()
         _output({"success": True, "message": "评论发送成功"})
     finally:
         browser.close()
@@ -517,6 +521,9 @@ def cmd_reply_comment(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         reply_comment(
             page,
             args.feed_id,
@@ -525,6 +532,7 @@ def cmd_reply_comment(args: argparse.Namespace) -> None:
             comment_id=args.comment_id or "",
             user_id=args.user_id or "",
         )
+        gate.check_after()
         _output({"success": True, "message": "回复成功"})
     finally:
         browser.close()
@@ -536,10 +544,14 @@ def cmd_like_feed(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         if args.unlike:
             result = unlike_feed(page, args.feed_id, args.xsec_token)
         else:
             result = like_feed(page, args.feed_id, args.xsec_token)
+        gate.check_after()
         _output(result.to_dict())
     finally:
         browser.close()
@@ -551,10 +563,14 @@ def cmd_favorite_feed(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         if args.unfavorite:
             result = unfavorite_feed(page, args.feed_id, args.xsec_token)
         else:
             result = favorite_feed(page, args.feed_id, args.xsec_token)
+        gate.check_after()
         _output(result.to_dict())
     finally:
         browser.close()
@@ -581,6 +597,9 @@ def cmd_publish(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         publish_image_content(
             page,
             PublishImageContent(
@@ -593,6 +612,7 @@ def cmd_publish(args: argparse.Namespace) -> None:
                 visibility=args.visibility or "",
             ),
         )
+        gate.check_after()
         _output({"success": True, "title": title, "images": len(image_assets), "status": "发布完成"})
     finally:
         browser.close()
@@ -678,7 +698,11 @@ def cmd_click_publish(args: argparse.Namespace) -> None:
 
     browser, page = _connect_existing(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         click_publish_button(page)
+        gate.check_after()
         _output({"success": True, "status": "发布完成"})
     finally:
         browser.close()
@@ -775,6 +799,9 @@ def cmd_publish_video(args: argparse.Namespace) -> None:
 
     browser, page = _connect(args)
     try:
+        from xhs.risk_gate import NetlogRiskGate
+
+        gate = NetlogRiskGate.start(page)
         publish_video_content(
             page,
             PublishVideoContent(
@@ -787,6 +814,7 @@ def cmd_publish_video(args: argparse.Namespace) -> None:
                 visibility=args.visibility or "",
             ),
         )
+        gate.check_after()
         _output({"success": True, "title": title, "video": args.video, "status": "发布完成"})
     finally:
         browser.close()
