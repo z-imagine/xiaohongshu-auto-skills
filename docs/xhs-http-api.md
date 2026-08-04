@@ -185,6 +185,21 @@
 }
 ```
 
+### `POST /xhs/current-user`
+
+查询当前登录账号的基本信息。无需传 `user_id` 或 `xsec_token`；未登录时返回 `NOT_LOGGED_IN`。
+
+请求：
+
+```json
+{
+  "session_id": "session-xxx",
+  "token": "bridge-token"
+}
+```
+
+响应包含 `userId`、`nickname`、`redId`、`avatar`、`description`、`profileUrl` 与互动统计；不会返回 Cookie 或 `xsec_token`。
+
 ### `POST /xhs/user-profile`
 
 请求：
@@ -200,7 +215,7 @@
 
 ### `POST /xhs/user-feeds`
 
-获取用户主页 Feed；传 `load_more: true` 时触发一次“加载更多”并只返回本次新增内容。
+查询用户笔记第一页；传 `load_more: true` 时触发一次“加载更多”并只返回本次新增内容。默认响应包含 `userId`、`page: 1`、`notes`、`count` 与 `hasMore`。
 
 请求：
 

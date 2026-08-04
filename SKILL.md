@@ -56,9 +56,10 @@ metadata:
 | 浏览 | `list-feeds` | 首页 Feed |
 | 浏览 | `search-feeds` | 搜索笔记 |
 | 浏览 | `search-users` | 搜索用户 |
+| 浏览 | `current-user` | 当前登录账号基本信息 |
 | 浏览 | `get-feed-detail` | 笔记详情 |
 | 浏览 | `user-profile` | 用户主页 |
-| 浏览 | `user-feeds` | 用户主页 Feed |
+| 浏览 | `user-feeds` | 用户笔记第一页 |
 | 互动 | `post-comment` | 发表评论 |
 | 互动 | `reply-comment` | 回复评论 |
 | 互动 | `like-feed` | 点赞 |

@@ -50,7 +50,7 @@ from xhs.search import search_feeds  # noqa: E402
 from xhs.types import CommentLoadConfig, FilterOption, PublishImageContent, PublishVideoContent  # noqa: E402
 from xhs.user_feeds import get_user_feeds  # noqa: E402
 from xhs.user_search import search_users  # noqa: E402
-from xhs.user_profile import get_user_profile  # noqa: E402
+from xhs.user_profile import get_current_user_profile, get_user_profile  # noqa: E402
 
 
 def _json_response(data: dict[str, Any], *, status: int = 200) -> web.Response:
@@ -298,6 +298,9 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         )
         return profile.to_dict()
 
+    def handle_current_user(page: InProcessBridgePage, _body: dict[str, Any]) -> dict[str, Any]:
+        return get_current_user_profile(page)
+
     def handle_user_feeds(page: InProcessBridgePage, body: dict[str, Any]) -> dict[str, Any]:
         return get_user_feeds(
             page,
@@ -424,6 +427,7 @@ def register_xhs_routes(app: web.Application, router: BridgeRouter) -> None:
         ("search-feeds", handle_search_feeds),
         ("search-users", handle_search_users),
         ("get-feed-detail", handle_get_feed_detail),
+        ("current-user", handle_current_user),
         ("user-profile", handle_user_profile),
         ("user-feeds", handle_user_feeds),
         ("post-comment", handle_post_comment),

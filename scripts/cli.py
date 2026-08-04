@@ -446,7 +446,7 @@ def cmd_search_users(args: argparse.Namespace) -> None:
 
 
 def cmd_user_feeds(args: argparse.Namespace) -> None:
-    """获取用户主页 Feed，可选择加载下一批。"""
+    """查询用户笔记第一页，可选择加载下一批。"""
     from xhs.user_feeds import get_user_feeds
 
     browser, page = _connect(args)
@@ -458,6 +458,17 @@ def cmd_user_feeds(args: argparse.Namespace) -> None:
             load_more=args.load_more,
         )
         _output(result)
+    finally:
+        browser.close()
+
+
+def cmd_current_user(args: argparse.Namespace) -> None:
+    """查询当前登录账号的基本信息。"""
+    from xhs.user_profile import get_current_user_profile
+
+    browser, page = _connect(args)
+    try:
+        _output(get_current_user_profile(page))
     finally:
         browser.close()
 
@@ -1085,13 +1096,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.set_defaults(func=cmd_get_feed_detail)
 
     # user-profile
+    sub = subparsers.add_parser("current-user", help="查询当前登录账号的基本信息")
+    sub.set_defaults(func=cmd_current_user)
+
     sub = subparsers.add_parser("user-profile", help="获取用户主页")
     sub.add_argument("--user-id", required=True)
     sub.add_argument("--xsec-token", required=True)
     sub.set_defaults(func=cmd_user_profile)
 
     # user-feeds
-    sub = subparsers.add_parser("user-feeds", help="获取用户主页 Feed，可加载下一批")
+    sub = subparsers.add_parser("user-feeds", help="查询用户笔记第一页，可加载下一批")
     sub.add_argument("--user-id", required=True)
     sub.add_argument("--xsec-token", required=True)
     sub.add_argument("--load-more", action="store_true", help="触发一次加载更多")

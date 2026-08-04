@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import time
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from .cdp import Page
+from .errors import NotLoggedInError
+from .login import check_login_status
 from .types import Feed, UserBasicInfo, UserInteraction, UserProfileResponse
-from .urls import make_user_profile_url
+from .urls import EXPLORE_URL, make_user_profile_url
+from .selectors import USER_PROFILE_NAV_LINK
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +65,70 @@ def get_user_profile(page: Page, user_id: str, xsec_token: str) -> UserProfileRe
     page.wait_dom_stable()
 
     return _extract_user_profile_data(page)
+
+
+def get_current_user_profile(page: Page) -> dict:
+    """Return basic information for the account currently logged into XHS.
+
+    The profile link in the signed-in navigation is the canonical source for the
+    account id.  We deliberately do not expose the link's xsec token.
+    """
+    original_url = str(page.evaluate("location.href") or "")
+    try:
+        page.navigate(EXPLORE_URL)
+        page.wait_for_load()
+        if not check_login_status(page):
+            raise NotLoggedInError()
+
+        href = str(page.evaluate(
+            f"document.querySelector({json.dumps(USER_PROFILE_NAV_LINK)})?.getAttribute('href') || ''"
+        ) or "")
+        profile_url, user_id, xsec_token = _parse_current_profile_href(href)
+        if not user_id:
+            raise RuntimeError("当前账号个人主页链接不可用")
+
+        page.navigate(profile_url or make_user_profile_url(user_id, xsec_token))
+        page.wait_for_load()
+        page.wait_dom_stable()
+        profile = _extract_user_profile_data(page)
+        basic_info = profile.user_basic_info
+        return {
+            "userId": user_id,
+            "nickname": basic_info.nickname,
+            "redId": basic_info.red_id,
+            "avatar": basic_info.images or basic_info.imageb,
+            "description": basic_info.desc,
+            "gender": basic_info.gender,
+            "ipLocation": basic_info.ip_location,
+            "profileUrl": f"https://www.xiaohongshu.com/user/profile/{user_id}",
+            "interactions": [
+                {"type": item.type, "name": item.name, "count": item.count}
+                for item in profile.interactions
+            ],
+        }
+    finally:
+        try:
+            current_url = str(page.evaluate("location.href") or "")
+        except Exception:
+            current_url = ""
+        if original_url and original_url != current_url:
+            try:
+                page.navigate(original_url)
+                page.wait_for_load()
+            except Exception:
+                logger.warning("恢复原页面失败", exc_info=True)
+
+
+def _parse_current_profile_href(href: str) -> tuple[str, str, str]:
+    """Parse the signed-in navigation profile URL without accepting other paths."""
+    profile_url = urljoin("https://www.xiaohongshu.com", href)
+    parsed = urlparse(profile_url)
+    prefix = "/user/profile/"
+    if parsed.netloc != "www.xiaohongshu.com" or not parsed.path.startswith(prefix):
+        return "", "", ""
+    user_id = parsed.path.removeprefix(prefix).split("/", 1)[0]
+    xsec_token = parse_qs(parsed.query).get("xsec_token", [""])[0]
+    return profile_url, user_id, xsec_token
 
 
 def _extract_user_profile_data(page: Page) -> UserProfileResponse:

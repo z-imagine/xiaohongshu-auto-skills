@@ -39,7 +39,7 @@ def get_user_feeds(
     xsec_token: str,
     load_more: bool = False,
 ) -> dict:
-    """获取当前用户主页已加载 Feed，可选择触发一次加载更多。"""
+    """查询用户笔记第一页，或在 ``load_more`` 时读取下一批。"""
     _ensure_user_profile_page(page, user_id, xsec_token)
     before_feeds, _before_query, _before_fetching = _read_user_feeds_state(page)
     before_keys = {_feed_key(feed) for feed in before_feeds}
@@ -53,9 +53,10 @@ def get_user_feeds(
 
     result_feeds = new_feeds if load_more else after_feeds
     return {
-        "feeds": [feed.to_dict() for feed in result_feeds],
+        "userId": user_id,
+        "page": 2 if load_more else 1,
+        "notes": [feed.to_dict() for feed in result_feeds],
         "count": len(result_feeds),
-        "totalLoaded": len(after_feeds),
         "hasMore": bool(after_query.get("hasMore", False)),
     }
 
