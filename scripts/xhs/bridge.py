@@ -185,6 +185,10 @@ class BridgePage:
 
     # ─── 截图 ────────────────────────────────────────────────────
 
+    def screenshot(self) -> dict[str, Any]:
+        """Capture the current target XHS tab without changing tab focus."""
+        return self._call("screenshot") or {}
+
     def screenshot_element(self, selector: str, padding: int = 0) -> bytes:
         result = self._call("screenshot_element", {"selector": selector, "padding": padding})
         if result and result.get("data"):
@@ -233,6 +237,10 @@ class BridgePage:
     def get_session_state(self) -> dict[str, Any]:
         """Fetch detailed bridge session state for diagnostics."""
         return self._call("get_session_state")
+
+    def get_page_state(self) -> dict[str, Any]:
+        """Fetch a bounded, read-only snapshot of the target page state."""
+        return self._call("get_page_state") or {}
 
     # ─── NetLog 风控数据 ─────────────────────────────────────────
 

@@ -5,7 +5,7 @@
  * - navigate / wait_for_load: chrome.tabs.update + onUpdated
  * - evaluate / has_element 等: chrome.scripting.executeScript (MAIN world)
  * - click / input 等 DOM 操作: chrome.tabs.sendMessage → content.js
- * - screenshot: chrome.tabs.captureVisibleTab
+ * - screenshot: chrome.debugger Page.captureScreenshot（精确目标 tab）
  * - get_cookies: chrome.cookies.getAll
  */
 
@@ -294,7 +294,8 @@ async function handleCommand(msg) {
       return await cmdWaitForLoad(params);
 
     // ── 截图 ──
-    case "screenshot_element":
+    case "screenshot":
+    case "screenshot_element": // 兼容旧 BridgePage 接口；不再假装裁剪元素。
       return await cmdScreenshot(params);
 
     case "set_file_input":
@@ -318,6 +319,7 @@ async function handleCommand(msg) {
     case "get_scroll_top":
     case "get_viewport_height":
     case "get_url":
+    case "get_page_state":
       return await cmdEvaluateInMainWorld(method, params);
 
     // ── DOM 操作（在页面 MAIN world 执行，无需 content script 就绪） ──
@@ -378,8 +380,27 @@ async function waitForTabComplete(tabId, expectedUrlPrefix, timeout) {
 
 async function cmdScreenshot() {
   const tab = await getOrOpenXhsTab();
-  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-  return { data: dataUrl.split(",")[1] };
+  const target = { tabId: tab.id };
+  await chrome.debugger.attach(target, "1.3");
+  try {
+    const [screenshot, layout] = await Promise.all([
+      chrome.debugger.sendCommand(target, "Page.captureScreenshot", { format: "png" }),
+      chrome.debugger.sendCommand(target, "Page.getLayoutMetrics"),
+    ]);
+    const viewport = layout.cssVisualViewport || layout.visualViewport || {};
+    return {
+      data: screenshot.data,
+      mime_type: "image/png",
+      captured_at: new Date().toISOString(),
+      url: tab.url || "",
+      viewport: {
+        width: viewport.clientWidth || 0,
+        height: viewport.clientHeight || 0,
+      },
+    };
+  } finally {
+    await chrome.debugger.detach(target).catch(() => {});
+  }
 }
 
 // ───────────────────────── Cookies ─────────────────────────
@@ -462,6 +483,39 @@ function mainWorldExecutor(method, params) {
 
     case "get_url":
       return window.location.href;
+
+    case "get_page_state": {
+      const focus = document.activeElement;
+      const focusedElement = focus && focus !== document.body
+        ? {
+          tag: focus.tagName.toLowerCase(),
+          id: focus.id || "",
+          class_name: typeof focus.className === "string" ? focus.className.slice(0, 200) : "",
+          name: focus.getAttribute("name") || "",
+        }
+        : null;
+      const sourceText = (document.body?.innerText || "").slice(0, 12000);
+      const signals = sourceText
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter((line) => line && /登录|验证码|验证|风控|异常|失败|错误|限制|安全/i.test(line))
+        .slice(0, 8)
+        .map((line) => line.slice(0, 240));
+      return {
+        url: window.location.href,
+        title: document.title,
+        ready_state: document.readyState,
+        viewport: { width: window.innerWidth, height: window.innerHeight, device_pixel_ratio: window.devicePixelRatio || 1 },
+        scroll: {
+          x: window.scrollX || 0,
+          y: window.scrollY || 0,
+          document_height: Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0),
+        },
+        focused_element: focusedElement,
+        xhs_initial_state_present: typeof window.__INITIAL_STATE__ !== "undefined",
+        visible_signals: signals,
+      };
+    }
 
     case "wait_dom_stable": {
       const timeout = params.timeout || 10000;

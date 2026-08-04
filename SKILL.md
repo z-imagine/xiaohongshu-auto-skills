@@ -43,6 +43,10 @@ metadata:
 |------|--------|------|
 | 配置 | `config status` | 查看用户级 bridge 配置状态 |
 | 配置 | `config set` | 验证并保存用户级 bridge 配置 |
+| 诊断 | `screenshot` | 截取目标 XHS 页面 |
+| 诊断 | `inspect-page` | 读取目标页面状态 |
+| 诊断 | `bridge-status` | 读取 bridge 与 session 状态 |
+| 诊断 | `diagnose` | 汇总失败现场信息 |
 | 认证 | `check-login` | 检查登录状态 |
 | 认证 | `get-qrcode` | 获取二维码 |
 | 认证 | `wait-login` | 等待扫码完成 |
@@ -108,7 +112,7 @@ cd <skill-root> && uv run python scripts/cli.py <subcommand> [args]
 
 ## 首次运行 / 前置检查流程
 
-每次触发本 skill 时，按顺序执行以下检查。任何一步失败都必须停止后续步骤。
+每次触发本 skill 时，按顺序执行以下检查。任何一步失败都必须停止后续步骤；诊断命令按本节的例外规则执行。
 
 ### Step 1: 工作目录确认
 
@@ -120,7 +124,12 @@ cd <skill-root> && uv run python scripts/cli.py <subcommand> [args]
 
 ### Step 3: Bridge 连通性验证 ⛔ BLOCKING
 
-按 bridge 配置参考文件执行：
+除诊断命令外，按 bridge 配置参考文件执行：
+
+- `screenshot`、`inspect-page`：只要求 bridge 与目标 extension 在线，**不运行** `check-login`，以保留失败现场。
+- `bridge-status`、`diagnose`：只读取已有 bridge/session 状态；即使 extension 已断开也允许执行，**不运行** `check-login`。
+
+其他业务命令按 bridge 配置参考文件执行：
 
 ```bash
 cd <skill-root> && uv run python scripts/cli.py check-login
@@ -244,3 +253,4 @@ cd <skill-root> && uv run python scripts/cli.py \
 - **操作超时**：检查网络连接，适当增加等待时间，可重试一次。
 - **频率限制**：降低操作频率，增大间隔，建议分批执行。
 - **配置验证失败**：CLI 不保存配置；保留用户输入，询问是否修正后重试。
+- **远程页面异常或结果不明**：按需运行 `diagnose --screenshot`，读取返回的本地截图路径并展示图片；不刷新、点击或改变页面来获取诊断信息。

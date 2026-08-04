@@ -179,6 +179,8 @@ curl -X POST http://127.0.0.1:9333/bridge/rpc \
 - `input_content_editable`
 - `set_file_input`
 - `set_file_input_from_url`
+- `screenshot`
+- `get_page_state`
 
 示例：
 

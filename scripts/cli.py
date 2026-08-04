@@ -10,10 +10,13 @@ bridge server 与浏览器扩展必须由用户预先启动并连接；CLI 不�
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
 import sys
+import tempfile
+from pathlib import Path
 from urllib.parse import urlparse
 
 # Windows 控制台默认编码（如 cp1252）不支持中文，强制 UTF-8
@@ -866,6 +869,114 @@ def cmd_clear_netlog(args: argparse.Namespace) -> None:
         browser.close()
 
 
+# ─── 只读诊断 ────────────────────────────────────────────────────────────────
+
+
+def _diagnostic_page(args: argparse.Namespace):
+    """Create a bridge page without requiring a connected extension first."""
+    from xhs.bridge import BridgePage
+
+    bridge_url, session_id, token = _resolve_bridge_settings(args)
+    return BridgePage(bridge_url=bridge_url, session_id=session_id, token=token)
+
+
+def _png_dimensions(payload: bytes) -> tuple[int, int]:
+    """Return PNG pixel dimensions without an image library dependency."""
+    if len(payload) < 24 or payload[:8] != b"\x89PNG\r\n\x1a\n" or payload[12:16] != b"IHDR":
+        return 0, 0
+    return int.from_bytes(payload[16:20], "big"), int.from_bytes(payload[20:24], "big")
+
+
+def _save_screenshot(result: dict, output: str | None) -> dict:
+    encoded = result.get("data")
+    if not isinstance(encoded, str) or not encoded:
+        raise RuntimeError("截图结果缺少 PNG 数据")
+    try:
+        payload = base64.b64decode(encoded, validate=True)
+    except ValueError as exc:
+        raise RuntimeError("截图 PNG 数据无效") from exc
+
+    if output:
+        path = Path(output).expanduser()
+        if not path.is_absolute():
+            raise ValueError("--output 必须是绝对路径")
+        if path.exists():
+            raise FileExistsError(f"截图输出文件已存在: {path}")
+    else:
+        directory = Path(tempfile.mkdtemp(prefix="xhs-diagnostic-"))
+        path = directory / "screenshot.png"
+
+    path.write_bytes(payload)
+    width, height = _png_dimensions(payload)
+    return {
+        "path": str(path),
+        "mime_type": result.get("mime_type") or "image/png",
+        "width": width,
+        "height": height,
+        "captured_at": result.get("captured_at"),
+        "url": result.get("url"),
+    }
+
+
+def cmd_screenshot(args: argparse.Namespace) -> None:
+    """Capture the current target XHS tab to a local PNG file."""
+    browser = None
+    try:
+        browser, page = _connect_existing(args)
+        _output({"success": True, "screenshot": _save_screenshot(page.screenshot(), args.output)})
+    except Exception as exc:
+        _output(
+            {"success": False, "error_code": "SCREENSHOT_FAILED", "error": str(exc)},
+            exit_code=2,
+        )
+    finally:
+        if browser is not None:
+            browser.close()
+
+
+def cmd_inspect_page(args: argparse.Namespace) -> None:
+    """Return a bounded, read-only snapshot of the current target page."""
+    browser, page = _connect_existing(args)
+    try:
+        _output({"success": True, "page": page.get_page_state()})
+    finally:
+        browser.close()
+
+
+def cmd_bridge_status(args: argparse.Namespace) -> None:
+    """Read server-side session state, including an offline extension session."""
+    page = _diagnostic_page(args)
+    _output({"success": True, "session": page.get_session_state()})
+
+
+def cmd_diagnose(args: argparse.Namespace) -> None:
+    """Collect independent, read-only diagnostic checks with partial results."""
+    page = _diagnostic_page(args)
+    bridge: dict[str, object]
+    try:
+        bridge = {"ok": True, "state": page.get_session_state()}
+    except Exception as exc:
+        bridge = {"ok": False, "error": str(exc)}
+
+    page_state: dict[str, object]
+    try:
+        page_state = {"ok": True, "state": page.get_page_state()}
+    except Exception as exc:
+        page_state = {"ok": False, "error": str(exc)}
+
+    result: dict[str, object] = {
+        "success": bool(bridge["ok"]),
+        "bridge": bridge,
+        "page": page_state,
+    }
+    if args.screenshot:
+        try:
+            result["screenshot"] = {"ok": True, **_save_screenshot(page.screenshot(), args.output)}
+        except Exception as exc:
+            result["screenshot"] = {"ok": False, "error": str(exc)}
+    _output(result, exit_code=0 if bridge["ok"] else 2)
+
+
 # ─── 参数解析 ──────────────────────────────────────────────────────────────────
 
 
@@ -1098,6 +1209,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = subparsers.add_parser("clear-netlog", help="清空 NetLog 缓存")
     sub.set_defaults(func=cmd_clear_netlog)
+
+    # Read-only diagnostics. These remain separate from business commands.
+    sub = subparsers.add_parser("screenshot", help="截取目标 XHS tab 到本地 PNG")
+    sub.add_argument("--output", help="本地 PNG 绝对输出路径（默认临时目录）")
+    sub.set_defaults(func=cmd_screenshot)
+
+    sub = subparsers.add_parser("inspect-page", help="读取目标页面的只读状态快照")
+    sub.set_defaults(func=cmd_inspect_page)
+
+    sub = subparsers.add_parser("bridge-status", help="读取 bridge 与目标 session 状态")
+    sub.set_defaults(func=cmd_bridge_status)
+
+    sub = subparsers.add_parser("diagnose", help="汇总 bridge、页面和可选截图诊断")
+    sub.add_argument("--screenshot", action="store_true", help="同时截取目标 tab")
+    sub.add_argument("--output", help="截图本地 PNG 绝对输出路径")
+    sub.set_defaults(func=cmd_diagnose)
 
     return parser
 
